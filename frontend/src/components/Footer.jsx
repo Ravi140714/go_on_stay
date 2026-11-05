@@ -98,13 +98,13 @@ const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link to="/become-host" className="hover:text-teal-400 transition-colors flex items-center gap-1 group">
+                <Link to="/partner-benefits" className="hover:text-teal-400 transition-colors flex items-center gap-1 group">
                   <span>Partner Benefits & Revenue Share</span>
                   <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               </li>
               <li>
-                <Link to="/become-host" className="hover:text-teal-400 transition-colors flex items-center gap-1 group">
+                <Link to="/real-time-inventory" className="hover:text-teal-400 transition-colors flex items-center gap-1 group">
                   <span>Real-Time Inventory Management</span>
                   <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>

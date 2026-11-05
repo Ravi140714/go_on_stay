@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { CreditCard, ShieldCheck, Lock, ArrowLeft, RefreshCw, AlertOctagon, X, CheckCircle, HelpCircle } from 'lucide-react';
+import {
+  CreditCard, ShieldCheck, Lock, ArrowLeft, RefreshCw, AlertOctagon, X,
+  CheckCircle, HelpCircle
+} from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -14,17 +17,20 @@ const PaymentPage = () => {
   const [paymentOrder, setPaymentOrder] = useState(null);
   const [loadingOrder, setLoadingOrder] = useState(true);
   const [verifying, setVerifying] = useState(false);
-  
+
   // Payment Failure Modal State
   const [showFailModal, setShowFailModal] = useState(false);
   const [failureMessage, setFailureMessage] = useState('');
   const [failureCode, setFailureCode] = useState('');
   const [retrying, setRetrying] = useState(false);
 
+  const hasInitiatedRef = useRef(false);
+
   useEffect(() => {
-    if (bookingIdFromUrl) {
+    if (bookingIdFromUrl && !hasInitiatedRef.current) {
+      hasInitiatedRef.current = true;
       initiatePaymentOrder(bookingIdFromUrl);
-    } else {
+    } else if (!bookingIdFromUrl) {
       setLoadingOrder(false);
     }
   }, [bookingIdFromUrl]);
@@ -62,14 +68,21 @@ const PaymentPage = () => {
       return;
     }
 
+    const prefillData = {
+      name: paymentOrder.customer?.name || user?.first_name || 'Guest User',
+      email: paymentOrder.customer?.email || user?.email || '',
+      contact: paymentOrder.customer?.phone || user?.phone_number || '9876543210',
+    };
+
     const options = {
       key: paymentOrder.key_id,
       amount: paymentOrder.amount,
       currency: paymentOrder.currency,
-      name: "GoOnStay",
+      name: "Book My Room",
       description: `Stay Reservation - ${paymentOrder.booking_id}`,
       image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=120&q=80",
       order_id: paymentOrder.order_id,
+      prefill: prefillData,
       handler: async function (response) {
         // Razorpay successful checkout callback - Verify server-side signature
         setVerifying(true);
@@ -94,11 +107,6 @@ const PaymentPage = () => {
         } finally {
           setVerifying(false);
         }
-      },
-      prefill: {
-        name: paymentOrder.customer?.name || user?.first_name || 'Guest User',
-        email: paymentOrder.customer?.email || user?.email || '',
-        contact: paymentOrder.customer?.phone || user?.phone_number || '9876543210',
       },
       notes: {
         booking_id: paymentOrder.booking_id,
@@ -187,7 +195,7 @@ const PaymentPage = () => {
     <div className="bg-slate-50 text-slate-900 min-h-screen pb-16 relative">
       
       {/* SSL Encryption Security Header */}
-      <div className="bg-white border-b border-slate-200 py-4 px-4 sm:px-6 lg:px-8">
+      <div className="bg-[#d5e7f5]/80 backdrop-blur-md border-b border-sky-200/60 py-4 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
@@ -213,6 +221,16 @@ const PaymentPage = () => {
         <div className="card-white p-8 border border-slate-200 shadow-xl space-y-6">
           
           <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4">
+            {paymentOrder?.hotel_name && (
+              <div className="border-b border-slate-200 pb-3">
+                <span className="text-xs font-extrabold uppercase text-slate-500 block mb-1">Stay Reservation</span>
+                <span className="text-sm font-black text-slate-900 block">{paymentOrder?.hotel_name}</span>
+                {paymentOrder?.room_title && (
+                  <span className="text-xs font-semibold text-teal-700 block">{paymentOrder?.room_title}</span>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <span className="text-xs font-extrabold uppercase text-slate-500">Booking Code</span>
               <span className="text-sm font-black font-mono text-slate-900">{paymentOrder?.booking_id}</span>
@@ -228,6 +246,37 @@ const PaymentPage = () => {
               <span className="text-xs font-bold text-slate-900">{paymentOrder?.customer?.name}</span>
             </div>
 
+            {/* Itemized Price Breakdown */}
+            {paymentOrder?.room_subtotal !== undefined && (
+              <div className="border-b border-slate-200 pb-3 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-slate-600 font-medium">
+                  <span>Room Tariff ({paymentOrder.number_of_nights || 1}N × {paymentOrder.number_of_rooms || 1}R)</span>
+                  <span className="font-bold text-slate-900">₹{parseFloat(paymentOrder.room_subtotal).toFixed(2)}</span>
+                </div>
+
+                {paymentOrder.meal_subtotal > 0 && (
+                  <div className="flex items-center justify-between text-teal-700 font-semibold bg-teal-50/60 p-2 rounded-lg border border-teal-200/50">
+                    <span>Meal Plan ({paymentOrder.meal_plan?.replace('_', ' ')})</span>
+                    <span className="font-black text-teal-800">+₹{parseFloat(paymentOrder.meal_subtotal).toFixed(2)}</span>
+                  </div>
+                )}
+
+                {paymentOrder.taxes > 0 && (
+                  <div className="flex items-center justify-between text-slate-600 font-medium">
+                    <span>Estimated Taxes (18% GST)</span>
+                    <span className="font-bold text-slate-900">+₹{parseFloat(paymentOrder.taxes).toFixed(2)}</span>
+                  </div>
+                )}
+
+                {paymentOrder.discount > 0 && (
+                  <div className="flex items-center justify-between text-rose-600 font-bold">
+                    <span>Discount Applied</span>
+                    <span>-₹{parseFloat(paymentOrder.discount).toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-between pt-1">
               <span className="text-sm font-black uppercase text-slate-900">Total Amount Payable</span>
               <span className="text-2xl font-black text-teal-600">
@@ -236,11 +285,13 @@ const PaymentPage = () => {
             </div>
           </div>
 
-          <div className="space-y-4 pt-2">
+          {/* Razorpay Standard Checkout Action */}
+          <div className="pt-4 space-y-4">
             <button
+              type="button"
               onClick={handleOpenRazorpayCheckout}
               disabled={verifying}
-              className="btn-teal w-full py-4 text-sm font-black uppercase tracking-wider shadow-lg shadow-teal-600/30 flex items-center justify-center gap-2"
+              className="btn-teal w-full py-4 text-sm font-black uppercase tracking-wider shadow-lg shadow-teal-600/30 flex items-center justify-center gap-2 cursor-pointer transition-transform active:scale-[0.99]"
             >
               {verifying ? (
                 <>
@@ -249,16 +300,21 @@ const PaymentPage = () => {
                 </>
               ) : (
                 <>
-                  <CreditCard className="w-5 h-5" />
+                  <Lock className="w-5 h-5" />
                   <span>Pay ₹{(paymentOrder?.amount / 100).toFixed(2)} via Razorpay</span>
                 </>
               )}
             </button>
 
-            <p className="text-[11px] text-center text-slate-500 font-semibold flex items-center justify-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-teal-600" />
-              Supports UPI, Credit/Debit Cards, NetBanking, and Wallets with instant server verification.
-            </p>
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center space-y-1.5">
+              <p className="text-xs font-bold text-slate-800 flex items-center justify-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-teal-600" />
+                Razorpay Standard 256-Bit SSL Checkout
+              </p>
+              <p className="text-[11px] text-slate-500 leading-relaxed max-w-md mx-auto">
+                Supports UPI, Credit/Debit Cards, NetBanking (50+ banks), and Wallets with 256-bit encryption.
+              </p>
+            </div>
           </div>
 
         </div>

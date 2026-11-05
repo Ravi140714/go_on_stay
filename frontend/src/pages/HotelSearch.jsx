@@ -10,6 +10,8 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import VoiceSearchButton from '../components/VoiceSearchButton';
 import HotelMapView from '../components/HotelMapView';
+import CategoryTabs from '../components/CategoryTabs';
+import Pagination from '../components/Pagination';
 
 const availableAmenities = [
   'Free High-Speed Wi-Fi',
@@ -226,6 +228,8 @@ const HotelSearch = () => {
   const checkOut = searchParams.get('check_out') || getTomorrowStr();
   const rooms = parseInt(searchParams.get('rooms') || '1');
   const guests = parseInt(searchParams.get('guests') || '2');
+  const propTypeParam = searchParams.get('property_type') || '';
+  const currentCategory = propTypeParam.includes('VILLA') || propTypeParam.includes('HOMESTAY') ? 'VILLAS' : 'HOTELS';
 
   // Filter States
   const [searchCityInput, setSearchCityInput] = useState(qCityParam || qSearchParam);
@@ -242,6 +246,11 @@ const HotelSearch = () => {
   const [hotels, setHotels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('list'); // 'list' | 'map'
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchCityInput, priceMax, selectedStars, freeCancellation, breakfastIncluded, selectedAmenities, sortBy, searchParams]);
 
   // Wishlist State & Handlers
   const [userWishlist, setUserWishlist] = useState([]);
@@ -301,10 +310,12 @@ const HotelSearch = () => {
     try {
       const activeCity = searchParams.get('city') || '';
       const activeQuery = searchParams.get('search') || searchParams.get('query') || '';
+      const activePropType = searchParams.get('property_type') || '';
       
       const queryParams = new URLSearchParams();
       if (activeCity) queryParams.append('city', activeCity);
       if (activeQuery) queryParams.append('search', activeQuery);
+      if (activePropType) queryParams.append('property_type', activePropType);
 
       const res = await api.get(`/hotels/?${queryParams.toString()}`);
       setHotels(res.data.results || res.data);
@@ -442,30 +453,51 @@ const HotelSearch = () => {
   const [showFilterModal, setShowFilterModal] = useState(false);
 
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen pb-16">
+    <div className="bg-[#eaf3f9] text-slate-900 min-h-screen pb-16">
       
       {/* Main Content Layout */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-4">
         
+        {/* TOP CATEGORY SWITCHER TABS: [Hotels] | [Villas & Homestays] */}
+        <div className="bg-[#eaf3f9] rounded-2xl border border-sky-200/80 shadow-xs px-4 pt-3 pb-1">
+          <CategoryTabs
+            selectedCategory={currentCategory}
+            onSelectCategory={(cat) => {
+              const newParams = new URLSearchParams(searchParams);
+              if (cat === 'VILLAS') {
+                newParams.set('property_type', 'VILLA,HOMESTAY');
+              } else {
+                newParams.set('property_type', 'HOTEL,RESORT');
+              }
+              setSearchParams(newParams);
+            }}
+            className="mb-0 border-b-0"
+          />
+        </div>
+
         {/* Results Header, Filters Button & Sorting Bar */}
-        <div className="card-white p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-slate-200 shadow-sm">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2">
-              <span>Hotels in <span className="text-rose-600">{displayCityName || 'All Destinations'}</span></span>
-              <span className="text-xs bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full border border-rose-200 font-extrabold">
-                {sortedHotels.length} Stays
+        <div className="card-white p-4 sm:p-5 border border-slate-200 shadow-sm space-y-3.5">
+          {/* Top Row: Title + Stays Badge strictly in 1 clean horizontal line */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <h2 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight whitespace-nowrap">
+                {currentCategory === 'VILLAS' ? 'Villas & Homestays' : 'Hotels'} in{' '}
+                <span className="text-rose-600">{displayCityName || 'All Destinations'}</span>
+              </h2>
+              <span className="text-xs bg-rose-50 text-rose-700 px-3 py-1 rounded-full border border-rose-200 font-black whitespace-nowrap shrink-0 shadow-2xs">
+                {sortedHotels.length} {sortedHotels.length === 1 ? 'Stay' : 'Stays'}
               </span>
-            </h2>
-            <p className="text-xs text-slate-500 font-semibold mt-1">
-              Verified available properties for {checkIn} → {checkOut} ({guests} Guests, {rooms} Room)
+            </div>
+            <p className="text-xs text-slate-500 font-semibold whitespace-nowrap shrink-0">
+              Verified available for <span className="text-slate-800 font-bold">{checkIn} → {checkOut}</span> ({guests} {guests === 1 ? 'Guest' : 'Guests'}, {rooms} {rooms === 1 ? 'Room' : 'Rooms'})
             </p>
           </div>
 
-          {/* Search Input with Voice Search & Action Buttons */}
-          <div className="flex flex-wrap items-center gap-3 shrink-0 w-full md:w-auto">
+          {/* Action Row: Search Input + View Mode Switcher + Filters + Sorting */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             
             {/* Quick City Search with Voice */}
-            <form onSubmit={handleCitySearchSubmit} className="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 focus-within:border-rose-600 focus-within:bg-white transition-all flex-1 sm:w-64">
+            <form onSubmit={handleCitySearchSubmit} className="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 focus-within:border-rose-600 focus-within:bg-white transition-all w-full md:w-80">
               <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <input
                 type="text"
@@ -491,68 +523,71 @@ const HotelSearch = () => {
               />
             </form>
 
-            {/* View Mode Toggle: List View / Map View */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={`py-1.5 px-3 rounded-lg font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                  viewMode === 'list'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-                title="Switch to List View"
-              >
-                <LayoutGrid className={`w-3.5 h-3.5 ${viewMode === 'list' ? 'text-rose-600' : 'text-slate-400'}`} />
-                <span>List View</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('map')}
-                className={`py-1.5 px-3 rounded-lg font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                  viewMode === 'map'
-                    ? 'bg-rose-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-                title="Switch to Map View"
-              >
-                <Map className="w-3.5 h-3.5" />
-                <span>Map View</span>
-              </button>
-            </div>
+            {/* View Mode Toggle, Filters, and Sort Buttons */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* View Mode Toggle: List View / Map View */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`py-1.5 px-3 rounded-lg font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                    viewMode === 'list'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                  title="Switch to List View"
+                >
+                  <LayoutGrid className={`w-3.5 h-3.5 ${viewMode === 'list' ? 'text-rose-600' : 'text-slate-400'}`} />
+                  <span>List View</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('map')}
+                  className={`py-1.5 px-3 rounded-lg font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                    viewMode === 'map'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                  title="Switch to Map View"
+                >
+                  <Map className="w-3.5 h-3.5" />
+                  <span>Map View</span>
+                </button>
+              </div>
 
-            {/* Filter Drawer Toggle Button */}
-            <button
-              type="button"
-              onClick={() => setShowFilterModal(true)}
-              className="py-2.5 px-4 rounded-xl border border-slate-300 bg-white hover:border-rose-600 hover:text-rose-600 text-slate-900 transition-all font-black text-xs flex items-center gap-2 shadow-2xs hover:shadow-md cursor-pointer"
-            >
-              <SlidersHorizontal className="w-4 h-4 text-rose-600" />
-              <span>Filters</span>
-              {activeFiltersCount > 0 ? (
-                <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center">
-                  {activeFiltersCount}
+              {/* Filter Drawer Toggle Button */}
+              <button
+                type="button"
+                onClick={() => setShowFilterModal(true)}
+                className="py-2 px-3.5 rounded-xl border border-slate-300 bg-white hover:border-rose-600 hover:text-rose-600 text-slate-900 transition-all font-black text-xs flex items-center gap-2 shadow-2xs hover:shadow-md cursor-pointer shrink-0"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-rose-600" />
+                <span>Filters</span>
+                {activeFiltersCount > 0 ? (
+                  <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center">
+                    {activeFiltersCount}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">All</span>
+                )}
+              </button>
+
+              {/* Sort Dropdown */}
+              <div className="flex items-center gap-2 text-xs font-extrabold shrink-0">
+                <span className="text-slate-500 hidden sm:flex items-center gap-1 shrink-0">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-rose-600" /> Sort By:
                 </span>
-              ) : (
-                <span className="text-[10px] text-slate-400 font-bold uppercase">All</span>
-              )}
-            </button>
-
-            {/* Sort Dropdown */}
-            <div className="flex items-center gap-2 text-xs font-extrabold flex-1 sm:flex-initial">
-              <span className="text-slate-500 hidden sm:flex items-center gap-1 shrink-0">
-                <ArrowUpDown className="w-3.5 h-3.5 text-rose-600" /> Sort By:
-              </span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="w-full sm:w-auto px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-extrabold text-xs text-slate-900 focus:border-rose-600 outline-none cursor-pointer"
-              >
-                <option value="recommended">Recommended</option>
-                <option value="price_low">Price: Low to High</option>
-                <option value="price_high">Price: High to Low</option>
-                <option value="rating">Star Rating: High to Low</option>
-              </select>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="w-full sm:w-auto px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl font-extrabold text-xs text-slate-900 focus:border-rose-600 outline-none cursor-pointer"
+                >
+                  <option value="recommended">Recommended</option>
+                  <option value="price_low">Price: Low to High</option>
+                  <option value="price_high">Price: High to Low</option>
+                  <option value="rating">Star Rating: High to Low</option>
+                </select>
+              </div>
             </div>
 
           </div>
@@ -602,7 +637,7 @@ const HotelSearch = () => {
           </div>
         ) : (
           <div className="space-y-6">
-            {sortedHotels.map((hotel) => (
+            {sortedHotels.slice((currentPage - 1) * 10, currentPage * 10).map((hotel) => (
               <div key={hotel.id} className="card-white overflow-hidden flex flex-col md:flex-row group border border-slate-200 hover:shadow-xl transition-all duration-300 rounded-3xl">
                 
                 {/* Hotel Cover Image & Frosted Glass Badges */}
@@ -618,11 +653,7 @@ const HotelSearch = () => {
                     <span>{hotel.star_rating || 5}-Star Luxury</span>
                   </div>
 
-                  {/* City Location Frosted Glass Pill */}
-                  <div className="absolute bottom-3 left-3 glass-pill text-white text-[10.5px] font-black px-2.5 py-1 rounded-full shadow-md border border-white/30 flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
-                    <span>{hotel.city}</span>
-                  </div>
+
 
                   {/* Wishlist Heart Button */}
                   <button
@@ -719,6 +750,16 @@ const HotelSearch = () => {
 
               </div>
             ))}
+            <Pagination
+              currentPage={currentPage}
+              totalItems={sortedHotels.length}
+              itemsPerPage={10}
+              onPageChange={(p) => {
+                setCurrentPage(p);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              color="rose"
+            />
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search, MapPin, Calendar, Users, Hotel, ShieldCheck,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import InteractiveSearchBar from '../components/InteractiveSearchBar';
+import CategoryTabs from '../components/CategoryTabs';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -145,24 +146,36 @@ const Home = () => {
   // Tripled cities array for seamless infinite looping without visible reset
   const infinitePopularCities = [...popularCities, ...popularCities, ...popularCities];
 
+  // Selected Category: 'HOTELS' | 'VILLAS'
+  const [selectedCategory, setSelectedCategory] = useState('HOTELS');
+
+  // Filter properties by selected category (Hotels/Resorts vs Villas/Homestays)
+  const categoryFilteredHotels = useMemo(() => {
+    if (!featuredHotels) return [];
+    if (selectedCategory === 'VILLAS') {
+      return featuredHotels.filter(h => h.property_type === 'VILLA' || h.property_type === 'HOMESTAY');
+    }
+    return featuredHotels.filter(h => h.property_type === 'HOTEL' || h.property_type === 'RESORT' || !h.property_type);
+  }, [featuredHotels, selectedCategory]);
+
   // City Filter State for Featured Stays
   const [selectedCityFilter, setSelectedCityFilter] = useState('ALL');
 
-  // Dynamic city categories from existing hotels
+  // Dynamic city categories from category-filtered properties
   const cityCategories = React.useMemo(() => {
-    const cities = new Set(featuredHotels.map((h) => h.city).filter(Boolean));
+    const cities = new Set(categoryFilteredHotels.map((h) => h.city).filter(Boolean));
     return ['ALL', ...Array.from(cities)];
-  }, [featuredHotels]);
+  }, [categoryFilteredHotels]);
 
   const groupedHotelsByCity = React.useMemo(() => {
     const groups = {};
-    featuredHotels.forEach((hotel) => {
+    categoryFilteredHotels.forEach((hotel) => {
       const cityKey = hotel.city || 'Other';
       if (!groups[cityKey]) groups[cityKey] = [];
       groups[cityKey].push(hotel);
     });
     return groups;
-  }, [featuredHotels]);
+  }, [categoryFilteredHotels]);
 
   const activeCitiesList = Object.keys(groupedHotelsByCity);
 
@@ -173,11 +186,29 @@ const Home = () => {
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('bmr_recently_viewed') || '[]');
-      setRecentlyViewed(saved);
+      // Filter out any test/dummy hotels automatically
+      const clean = Array.isArray(saved)
+        ? saved.filter(h => h && h.name && !h.name.toLowerCase().includes('test'))
+        : [];
+      setRecentlyViewed(clean);
+      localStorage.setItem('bmr_recently_viewed', JSON.stringify(clean));
     } catch (e) {
       setRecentlyViewed([]);
     }
   }, []);
+
+  const handleRemoveRecent = (e, idToRemove) => {
+    e.stopPropagation();
+    const updated = recentlyViewed.filter(item => item.id !== idToRemove);
+    setRecentlyViewed(updated);
+    localStorage.setItem('bmr_recently_viewed', JSON.stringify(updated));
+  };
+
+  const handleClearAllRecent = (e) => {
+    e.stopPropagation();
+    setRecentlyViewed([]);
+    localStorage.removeItem('bmr_recently_viewed');
+  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -189,119 +220,270 @@ const Home = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Extract hotel photos from user database hotels for the hero mosaic grid
+  const heroHotelPhotos = useMemo(() => {
+    if (!featuredHotels || featuredHotels.length === 0) return [];
+    const list = [];
+    featuredHotels.forEach((hotel) => {
+      if (hotel.primary_image) {
+        list.push({
+          id: hotel.id,
+          name: hotel.name,
+          city: hotel.city,
+          url: hotel.primary_image,
+          rating: hotel.guest_rating || hotel.star_rating,
+        });
+      }
+      if (hotel.images && Array.isArray(hotel.images)) {
+        hotel.images.forEach((img) => {
+          const u = img.display_url || img.image_url || img.image;
+          if (u && !list.some((item) => item.url === u)) {
+            list.push({
+              id: hotel.id,
+              name: hotel.name,
+              city: hotel.city,
+              url: u,
+              rating: hotel.guest_rating || hotel.star_rating,
+            });
+          }
+        });
+      }
+    });
+    return list;
+  }, [featuredHotels]);
+
+  const fallbackHeroPhotos = [
+    { id: 1, name: 'The Grand Royal Palace & Resort', city: 'Ahmedabad', url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80' },
+    { id: 2, name: 'Marine Horizon Bay Hotel', city: 'Mumbai', url: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80' },
+    { id: 3, name: 'Goa Palms Beach Resort & Spa', city: 'Goa', url: 'https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=800&q=80' },
+    { id: 28, name: 'The Palm Serenity Private Pool Villa', city: 'Goa', url: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80' },
+    { id: 29, name: 'Lakeview Heritage Villa & Homestay', city: 'Udaipur', url: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=800&q=80' },
+    { id: 30, name: 'Whispering Pines Forest Villa', city: 'Jaipur', url: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=800&q=80' },
+    { id: 31, name: 'The Royal Courtyard Traditional Homestay', city: 'Surat', url: 'https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=800&q=80' },
+    { id: 32, name: 'oyo Standard Stay', city: 'Ahmedabad', url: 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=800&q=80' },
+    { id: 1, name: 'Luxury Pool Resort', city: 'Goa', url: 'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&w=800&q=80' }
+  ];
+
+  const heroPhotos = heroHotelPhotos.length >= 3 ? heroHotelPhotos : fallbackHeroPhotos;
+  const getPhoto = (index) => heroPhotos[index % heroPhotos.length];
+
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen overflow-x-clip">
+    <div className="bg-[#eaf3f9] text-slate-900 min-h-screen overflow-x-clip">
 
-      {/* HERO SECTION WITH INTERACTIVE SEARCH BAR & RECENTLY VIEWED STAYS STRIP */}
-      <section className="relative z-30 py-6 sm:py-8 bg-white border-b border-slate-200 overflow-hidden">
-        {/* Subtle Architectural & Travel Grid Background Motif */}
-        <div className="absolute inset-0 pointer-events-none opacity-[0.4] flex items-center justify-center">
-          <svg className="w-[1100px] h-[400px] stroke-slate-200 fill-none" xmlns="http://www.w3.org/2000/svg">
-            <line x1="0" y1="200" x2="1100" y2="200" strokeWidth="1" strokeDasharray="6 6" />
-            <circle cx="550" cy="200" r="120" strokeWidth="1" strokeDasharray="4 4" />
-            <circle cx="550" cy="200" r="220" strokeWidth="1" />
-            <circle cx="550" cy="200" r="320" strokeWidth="1" strokeDasharray="8 8" />
-          </svg>
-        </div>
+      {/* HERO SECTION WITH STAYLURE-STYLE HEADLINE, CAPSULE SEARCH & REAL HOTEL PHOTO MOSAIC */}
+      <section className="relative z-30 pt-8 pb-14 sm:pt-12 sm:pb-16 bg-gradient-to-b from-[#d5e7f5] via-[#e2eef7] to-[#eaf3f9] border-b border-sky-100/70">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+            
+            {/* Left Column: Heading, Subtitle, Search Capsule, Recently Viewed */}
+            <div className="lg:col-span-7 space-y-5 text-left">
+              <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-black text-slate-900 tracking-tight leading-[1.12]">
+                Discover Stays<br />
+                Tailored Just For You
+              </h1>
+              <p className="text-sm sm:text-base text-slate-600 font-medium max-w-lg leading-relaxed">
+                Discover Handpicked Hotels, Resorts, And Home-Stays That Match Your Mood, Budget, And Location.
+              </p>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 space-y-4">
-          {/* INTERACTIVE AIRBNB-STYLE SEARCH BAR WITH POPOVERS */}
-          <InteractiveSearchBar />
+              {/* Pill Search Bar */}
+              <div className="pt-2">
+                <InteractiveSearchBar selectedCategory={selectedCategory} />
+              </div>
 
-          {/* RECENTLY VIEWED HOTELS / RECENT SEARCHES BUTTON & POPUP */}
-          <div className="pt-2 flex justify-center relative z-20" ref={recentPopoverRef}>
-            <button
-              onClick={() => setShowRecentPopover(!showRecentPopover)}
-              className="px-4 py-2 rounded-full bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs hover:shadow-md text-xs font-extrabold text-slate-700 hover:text-rose-600 flex items-center gap-2 transition-all cursor-pointer group"
-            >
-              <Clock className="w-3.5 h-3.5 text-rose-600 group-hover:rotate-12 transition-transform" />
-              <span>
-                Recently Viewed Hotels {recentlyViewed && recentlyViewed.length > 0 ? `(${recentlyViewed.length})` : ''}
-              </span>
-              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 group-hover:text-rose-600 transition-transform duration-200 ${showRecentPopover ? 'rotate-180' : ''}`} />
-            </button>
+              {/* RECENTLY VIEWED HOTELS / RECENT SEARCHES BUTTON & POPUP */}
+              <div className="pt-1 flex items-center relative z-40" ref={recentPopoverRef}>
+                <button
+                  onClick={() => setShowRecentPopover(!showRecentPopover)}
+                  className="px-4 py-2 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 shadow-2xs hover:shadow-md text-xs font-extrabold text-slate-700 hover:text-[#207a72] flex items-center gap-2 transition-all cursor-pointer group"
+                >
+                  <Clock className="w-3.5 h-3.5 text-[#207a72] group-hover:rotate-12 transition-transform" />
+                  <span>
+                    Recently Viewed Hotels {recentlyViewed && recentlyViewed.length > 0 ? `(${recentlyViewed.length})` : ''}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 group-hover:text-[#207a72] transition-transform duration-200 ${showRecentPopover ? 'rotate-180' : ''}`} />
+                </button>
 
-            {/* DROPDOWN POPOVER */}
-            {showRecentPopover && (
-              <div className="absolute top-full mt-2 w-80 sm:w-96 rounded-3xl bg-white/98 backdrop-blur-xl border border-slate-200 shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-200 z-50 text-left">
-                <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-xl bg-rose-50 text-rose-600">
-                      <Clock className="w-4 h-4" />
+                {/* DROPDOWN POPOVER */}
+                {showRecentPopover && (
+                  <div className="absolute top-full mt-2 w-80 sm:w-96 rounded-3xl bg-white/98 backdrop-blur-xl border border-slate-200 shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-200 z-50 text-left">
+                    <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-xl bg-teal-50 text-[#207a72]">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Recently Viewed Stays</h4>
+                          <p className="text-[10px] text-slate-400 font-bold">Pick up right where you left off</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {recentlyViewed && recentlyViewed.length > 0 && (
+                          <button
+                            onClick={handleClearAllRecent}
+                            className="text-[10px] font-bold text-slate-400 hover:text-rose-600 transition-colors cursor-pointer px-1 py-0.5 rounded"
+                            title="Clear recent history"
+                          >
+                            Clear All
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setShowRecentPopover(false)}
+                          className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Recently Viewed Stays</h4>
-                      <p className="text-[10px] text-slate-400 font-bold">Pick up right where you left off</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowRecentPopover(false)}
-                    className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
 
-                <div className="max-h-72 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                  {recentlyViewed && recentlyViewed.length > 0 ? (
-                    recentlyViewed.map((item) => (
-                      <div
-                        key={item.id}
-                        onClick={() => {
-                          setShowRecentPopover(false);
-                          navigate(`/hotels/${item.id}`);
-                        }}
-                        className="group p-2 rounded-2xl border border-slate-100 bg-slate-50/60 hover:bg-rose-50/50 hover:border-rose-200 flex items-center justify-between gap-3 cursor-pointer transition-all"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <img
-                            src={item.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=400&q=80'}
-                            alt={item.name}
-                            className="w-10 h-10 rounded-xl object-cover shrink-0 border border-slate-200"
-                          />
-                          <div className="min-w-0">
-                            <h5 className="text-xs font-black text-slate-800 group-hover:text-rose-600 truncate transition-colors">
-                              {item.name}
-                            </h5>
-                            <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                              <MapPin className="w-3 h-3 text-rose-500 shrink-0" /> {item.city}
-                            </p>
+                    <div className="max-h-72 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                      {recentlyViewed && recentlyViewed.length > 0 ? (
+                        recentlyViewed.map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              setShowRecentPopover(false);
+                              navigate(`/hotels/${item.id}`);
+                            }}
+                            className="group p-2 rounded-2xl border border-slate-100 bg-slate-50/60 hover:bg-teal-50/50 hover:border-teal-200 flex items-center justify-between gap-3 cursor-pointer transition-all"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <img
+                                src={item.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=400&q=80'}
+                                alt={item.name}
+                                className="w-10 h-10 rounded-xl object-cover shrink-0 border border-slate-200"
+                              />
+                              <div className="min-w-0">
+                                <h5 className="text-xs font-black text-slate-800 group-hover:text-[#207a72] truncate transition-colors">
+                                  {item.name}
+                                </h5>
+                                <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 text-[#207a72] shrink-0" /> {item.city}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => handleRemoveRecent(e, item.id)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-100/50 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                                title="Remove from history"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#207a72] group-hover:translate-x-1 transition-all" />
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="py-6 text-center space-y-3">
+                          <Sparkles className="w-6 h-6 text-slate-300 mx-auto" />
+                          <p className="text-xs font-bold text-slate-500">No recent views yet</p>
+                          <div className="space-y-1.5 pt-1">
+                            <div
+                              onClick={() => { setShowRecentPopover(false); navigate('/search?city=Goa'); }}
+                              className="p-2 rounded-xl bg-slate-50 hover:bg-teal-50 border border-slate-200 text-xs font-bold text-slate-700 hover:text-[#207a72] flex items-center justify-between cursor-pointer"
+                            >
+                              <span>Explore Stays in Goa</span>
+                              <ArrowRight className="w-3.5 h-3.5 text-[#207a72]" />
+                            </div>
+                            <div
+                              onClick={() => { setShowRecentPopover(false); navigate('/search?city=Mumbai'); }}
+                              className="p-2 rounded-xl bg-slate-50 hover:bg-teal-50 border border-slate-200 text-xs font-bold text-slate-700 hover:text-[#207a72] flex items-center justify-between cursor-pointer"
+                            >
+                              <span>Explore Stays in Mumbai</span>
+                              <ArrowRight className="w-3.5 h-3.5 text-[#207a72]" />
+                            </div>
                           </div>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-rose-600 group-hover:translate-x-1 transition-all shrink-0" />
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-6 text-center space-y-3">
-                      <Sparkles className="w-6 h-6 text-slate-300 mx-auto" />
-                      <p className="text-xs font-bold text-slate-500">No recent views yet</p>
-                      <div className="space-y-1.5 pt-1">
-                        <div
-                          onClick={() => { setShowRecentPopover(false); navigate('/search?city=Goa'); }}
-                          className="p-2 rounded-xl bg-slate-50 hover:bg-rose-50 border border-slate-200 text-xs font-bold text-slate-700 hover:text-rose-600 flex items-center justify-between cursor-pointer"
-                        >
-                          <span>Explore Stays in Goa</span>
-                          <ArrowRight className="w-3.5 h-3.5 text-rose-600" />
-                        </div>
-                        <div
-                          onClick={() => { setShowRecentPopover(false); navigate('/search?city=Mumbai'); }}
-                          className="p-2 rounded-xl bg-slate-50 hover:bg-rose-50 border border-slate-200 text-xs font-bold text-slate-700 hover:text-rose-600 flex items-center justify-between cursor-pointer"
-                        >
-                          <span>Explore Stays in Mumbai</span>
-                          <ArrowRight className="w-3.5 h-3.5 text-rose-600" />
-                        </div>
-                      </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Column: Mosaic Grid of Real Database Hotel Photos */}
+            <div className="lg:col-span-5 relative">
+              <div className="grid grid-cols-3 gap-3 sm:gap-3.5">
+                {/* Column 1 */}
+                <div className="space-y-3 sm:space-y-3.5">
+                  {[
+                    { photo: getPhoto(0), h: 'h-36 sm:h-44' },
+                    { photo: getPhoto(3), h: 'h-44 sm:h-52' },
+                    { photo: getPhoto(6), h: 'h-32 sm:h-40' }
+                  ].map((item, idx) => (
+                    <div
+                      key={`c1-${idx}`}
+                      className={`relative ${item.h} rounded-2xl sm:rounded-3xl overflow-hidden shadow-md bg-slate-200 select-none pointer-events-none`}
+                    >
+                      <img
+                        src={item.photo.url}
+                        alt={item.photo.name}
+                        className="w-full h-full object-cover select-none pointer-events-none"
+                        onError={(e) => {
+                          e.target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Column 2 */}
+                <div className="space-y-3 sm:space-y-3.5">
+                  {[
+                    { photo: getPhoto(1), h: 'h-48 sm:h-56' },
+                    { photo: getPhoto(4), h: 'h-36 sm:h-44' },
+                    { photo: getPhoto(7), h: 'h-36 sm:h-44' }
+                  ].map((item, idx) => (
+                    <div
+                      key={`c2-${idx}`}
+                      className={`relative ${item.h} rounded-2xl sm:rounded-3xl overflow-hidden shadow-md bg-slate-200 select-none pointer-events-none`}
+                    >
+                      <img
+                        src={item.photo.url}
+                        alt={item.photo.name}
+                        className="w-full h-full object-cover select-none pointer-events-none"
+                        onError={(e) => {
+                          e.target.src = 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80';
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Column 3 */}
+                <div className="space-y-3 sm:space-y-3.5">
+                  {[
+                    { photo: getPhoto(2), h: 'h-36 sm:h-44' },
+                    { photo: getPhoto(5), h: 'h-48 sm:h-56' },
+                    { photo: getPhoto(8), h: 'h-32 sm:h-40' }
+                  ].map((item, idx) => (
+                    <div
+                      key={`c3-${idx}`}
+                      className={`relative ${item.h} rounded-2xl sm:rounded-3xl overflow-hidden shadow-md bg-slate-200 select-none pointer-events-none`}
+                    >
+                      <img
+                        src={item.photo.url}
+                        alt={item.photo.name}
+                        className="w-full h-full object-cover select-none pointer-events-none"
+                        onError={(e) => {
+                          e.target.src = 'https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=800&q=80';
+                        }}
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
+
+              {/* Bottom Gradient Fade */}
+              <div className="pointer-events-none absolute bottom-0 inset-x-0 h-28 bg-gradient-to-t from-[#eaf3f9] via-[#eaf3f9]/70 to-transparent z-10" />
+            </div>
           </div>
         </div>
       </section>
 
       {/* POPULAR DESTINATIONS SLIDER - 1 SECOND AUTOMATIC STEPPING RECTANGLE CARDS */}
-      <section className="relative z-10 py-12 bg-white border-b border-slate-200">
+      <section className="relative z-10 py-12 bg-[#eaf3f9]/80 border-b border-sky-100">
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
@@ -359,18 +541,27 @@ const Home = () => {
         </div>
       </section>
 
-      {/* FEATURED HOTELS SECTION - SEPARATED BY CITY ROWS */}
-      <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+      {/* FEATURED HOTELS & VILLAS SECTION - SEPARATED BY CITY ROWS */}
+      <section className="py-14 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+
+        {/* TOP CATEGORY SWITCHER TABS: [Hotels] | [Villas & Homestays] */}
+        <div className="bg-[#eaf3f9] rounded-2xl border border-sky-200/80 shadow-xs px-4 pt-3 pb-1">
+          <CategoryTabs
+            selectedCategory={selectedCategory}
+            onSelectCategory={(cat) => {
+              setSelectedCategory(cat);
+              setSelectedCityFilter('ALL');
+            }}
+            className="mb-0 border-b-0"
+          />
+        </div>
 
         {/* Header & City Filter Tabs */}
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
             <div>
-              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 uppercase tracking-widest mb-1">
-
-              </div>
               <h2 className="text-2xl sm:text-3xl font-black text-slate-900">
-                {t('featured_stays')}
+                {selectedCategory === 'VILLAS' ? 'Featured Villa & Homestay Stays' : 'Featured Hotel Stays'}
               </h2>
               <p className="text-xs text-slate-500 mt-1">
                 Explore luxury properties separated by destination cities
@@ -378,7 +569,7 @@ const Home = () => {
             </div>
 
             <button
-              onClick={() => navigate('/search')}
+              onClick={() => navigate(selectedCategory === 'VILLAS' ? '/search?property_type=VILLA,HOMESTAY' : '/search?property_type=HOTEL,RESORT')}
               className="text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 bg-rose-50 px-3.5 py-1.5 rounded-xl border border-rose-200 transition-all hover:bg-rose-100"
             >
               Explore All Cities <ArrowRight className="w-3.5 h-3.5" />

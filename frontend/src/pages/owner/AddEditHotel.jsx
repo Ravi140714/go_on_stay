@@ -13,6 +13,7 @@ const AddEditHotel = () => {
 
   const [formData, setFormData] = useState({
     name: '',
+    property_type: 'HOTEL',
     description: '',
     address: '',
     city: 'Ahmedabad',
@@ -61,6 +62,7 @@ const AddEditHotel = () => {
       const h = res.data;
       setFormData({
         name: h.name,
+        property_type: h.property_type || 'HOTEL',
         description: h.description,
         address: h.address,
         city: h.city,
@@ -142,20 +144,22 @@ const AddEditHotel = () => {
       }
 
       // Upload selected file objects as Multipart FormData
-      for (let i = 0; i < filePreviews.length; i++) {
-        const item = filePreviews[i];
-        if (item.file) {
-          const uploadData = new FormData();
-          uploadData.append('image', item.file);
-          uploadData.append('is_primary', (existingImages.length === 0 && i === 0) ? 'true' : 'false');
-          await api.post(`/hotels/${hotelId}/upload-image/`, uploadData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          });
-        } else if (item.url) {
-          await api.post(`/hotels/${hotelId}/upload-image/`, {
-            image_url: item.url,
-            is_primary: (existingImages.length === 0 && i === 0) ? 'true' : 'false',
-          });
+      if (hotelId) {
+        for (let i = 0; i < filePreviews.length; i++) {
+          const item = filePreviews[i];
+          if (item.file) {
+            const uploadData = new FormData();
+            uploadData.append('image', item.file);
+            uploadData.append('is_primary', (existingImages.length === 0 && i === 0) ? 'true' : 'false');
+            await api.post(`/hotels/${hotelId}/upload-image/`, uploadData, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+            });
+          } else if (item.url) {
+            await api.post(`/hotels/${hotelId}/upload-image/`, {
+              image_url: item.url,
+              is_primary: (existingImages.length === 0 && i === 0) ? 'true' : 'false',
+            });
+          }
         }
       }
 
@@ -194,19 +198,53 @@ const AddEditHotel = () => {
           </button>
           <div>
             <h1 className="text-2xl font-black text-slate-900">
-              {isEditMode ? 'Edit Hotel Property' : 'List New Hotel Property'}
+              {isEditMode
+                ? `Edit ${formData.property_type === 'VILLA' ? 'Villa' : formData.property_type === 'HOMESTAY' ? 'Homestay' : 'Hotel'} Property`
+                : `List New ${formData.property_type === 'VILLA' ? 'Villa' : formData.property_type === 'HOMESTAY' ? 'Homestay' : 'Hotel'} Property`}
             </h1>
-            <p className="text-xs text-slate-500 font-semibold">Upload hotel photos and define property features</p>
+            <p className="text-xs text-slate-500 font-semibold">
+              Upload {formData.property_type === 'VILLA' ? 'villa' : formData.property_type === 'HOMESTAY' ? 'homestay' : 'hotel'} photos and define property features
+            </p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="card-white p-8 space-y-6 shadow-md border border-slate-200">
           
-          {/* Hotel Name & Star Rating */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2">
+          {/* Property Category / Type, Name & Rating */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+            
+            {/* Property Type Dropdown */}
+            <div className="sm:col-span-4">
+              <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5 flex items-center justify-between">
+                <span>Property Category</span>
+                <span className="text-[10px] text-teal-600 font-black">Hotel / Villa</span>
+              </label>
+              <select
+                name="property_type"
+                value={formData.property_type || 'HOTEL'}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 bg-teal-50/40 border border-teal-300 rounded-xl text-sm font-bold text-slate-900 focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20 cursor-pointer shadow-2xs"
+              >
+                <option value="HOTEL">🏨 Hotel</option>
+                <option value="VILLA">🏡 Private Villa (Luxury / Pool)</option>
+                <option value="HOMESTAY">🏠 Homestay (Heritage / Cozy)</option>
+                <option value="RESORT">🏖️ Resort & Spa</option>
+                <option value="APARTMENT">🏢 Apartment / Vacation Home</option>
+                <option value="GUEST_HOUSE">🏡 Guest House / B&B</option>
+                <option value="BOUTIQUE_HOTEL">🌟 Boutique Hotel</option>
+              </select>
+            </div>
+
+            {/* Property Name */}
+            <div className="sm:col-span-5">
               <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
-                Hotel Name
+                {formData.property_type === 'VILLA'
+                  ? 'Villa Name'
+                  : formData.property_type === 'HOMESTAY'
+                  ? 'Homestay Name'
+                  : formData.property_type === 'RESORT'
+                  ? 'Resort Name'
+                  : 'Hotel Name'}
               </label>
               <input
                 type="text"
@@ -214,12 +252,21 @@ const AddEditHotel = () => {
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
-                placeholder="e.g. The Grand Royal Palace & Resort"
+                placeholder={
+                  formData.property_type === 'VILLA'
+                    ? 'e.g. The Palm Serenity Private Pool Villa'
+                    : formData.property_type === 'HOMESTAY'
+                    ? 'e.g. Lakeview Heritage Villa & Homestay'
+                    : formData.property_type === 'RESORT'
+                    ? 'e.g. Goa Palms Beach Resort & Spa'
+                    : 'e.g. The Grand Royal Palace & Resort'
+                }
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
               />
             </div>
 
-            <div>
+            {/* Star Rating */}
+            <div className="sm:col-span-3">
               <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
                 Star Rating
               </label>
@@ -229,9 +276,9 @@ const AddEditHotel = () => {
                 onChange={handleChange}
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:border-teal-600 outline-none"
               >
-                <option value={3}>3 Star Hotel</option>
-                <option value={4}>4 Star Luxury Hotel</option>
-                <option value={5}>5 Star Palace Resort</option>
+                <option value={3}>3 Star Standard</option>
+                <option value={4}>4 Star Luxury</option>
+                <option value={5}>5 Star Palace / Villa</option>
               </select>
             </div>
           </div>

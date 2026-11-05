@@ -6,16 +6,24 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 const BookingPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, showToast } = useAuth();
 
+  const getTodayStr = () => new Date().toISOString().split('T')[0];
+  const getTomorrowStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  };
+
   const hotelId = searchParams.get('hotel_id');
   const roomId = searchParams.get('room_id');
-  const checkIn = searchParams.get('check_in') || '2026-10-10';
-  const checkOut = searchParams.get('check_out') || '2026-10-12';
+  const checkIn = searchParams.get('check_in') || getTodayStr();
+  const checkOut = searchParams.get('check_out') || getTomorrowStr();
   const roomsCount = Math.max(1, parseInt(searchParams.get('rooms') || '1'));
   const guestsCount = Math.max(1, parseInt(searchParams.get('guests') || '2'));
 
@@ -63,10 +71,18 @@ const BookingPage = () => {
       navigate('/');
       return;
     }
+    if (!hotelId || !roomId || hotelId === 'null' || roomId === 'null' || hotelId === 'undefined' || roomId === 'undefined') {
+      setLoading(false);
+      return;
+    }
     fetchBookingDetails();
   }, [hotelId, roomId, user, checkIn, checkOut, roomsCount]);
 
   const fetchBookingDetails = async () => {
+    if (!hotelId || !roomId || hotelId === 'null' || roomId === 'null' || hotelId === 'undefined' || roomId === 'undefined') {
+      setLoading(false);
+      return;
+    }
     try {
       const [hotelRes, roomRes, availabilityRes] = await Promise.all([
         api.get(`/hotels/${hotelId}/`),
@@ -82,18 +98,38 @@ const BookingPage = () => {
       setHotel(hotelRes.data);
       setRoom(roomRes.data);
 
+      let allocated = [];
       if (availabilityRes.data && availabilityRes.data.room_numbers) {
         const numbers = availabilityRes.data.room_numbers;
         setRoomNumbersList(numbers);
-        
-        // Auto-select first `roomsCount` available room numbers
         const availables = numbers.filter(r => r.is_available).map(r => r.number);
-        setSelectedRoomNumbers(availables.slice(0, roomsCount));
+        allocated = availables.slice(0, roomsCount);
       } else if (roomRes.data) {
         const defaultNums = roomRes.data.all_room_numbers || ['101', '102', '103', '104'];
         setRoomNumbersList(defaultNums.map(n => ({ number: n, is_available: true })));
-        setSelectedRoomNumbers(defaultNums.slice(0, roomsCount));
       }
+
+      // Auto-allocate available room units from pool
+      if (allocated.length < roomsCount && roomRes.data) {
+        const defaultPool = roomRes.data.all_room_numbers || ['101', '102', '103', '104'];
+        for (const num of defaultPool) {
+          if (!allocated.includes(num)) {
+            allocated.push(num);
+          }
+          if (allocated.length >= roomsCount) break;
+        }
+      }
+
+      if (allocated.length < roomsCount) {
+        for (let idx = 1; allocated.length < roomsCount; idx++) {
+          const fallbackNum = `10${idx}`;
+          if (!allocated.includes(fallbackNum)) {
+            allocated.push(fallbackNum);
+          }
+        }
+      }
+
+      setSelectedRoomNumbers(allocated);
     } catch (err) {
       console.error('Failed to load booking info:', err);
       showToast('Failed to load booking details.', 'error');
@@ -187,9 +223,18 @@ const BookingPage = () => {
       return;
     }
 
-    if (selectedRoomNumbers.length < roomsCount) {
-      showToast(`Please select ${roomsCount} room number(s) to match your requested room count. (${selectedRoomNumbers.length}/${roomsCount} selected)`, 'error');
-      return;
+    let finalAllocated = [...selectedRoomNumbers];
+    if (finalAllocated.length < roomsCount) {
+      const avail = roomNumbersList.filter(r => r.is_available).map(r => r.number);
+      const defaults = room?.all_room_numbers || ['101', '102', '103', '104'];
+      const candidates = [...avail, ...defaults];
+      for (const num of candidates) {
+        if (!finalAllocated.includes(num)) {
+          finalAllocated.push(num);
+        }
+        if (finalAllocated.length >= roomsCount) break;
+      }
+      setSelectedRoomNumbers(finalAllocated);
     }
 
     setCreatingBooking(true);
@@ -247,11 +292,26 @@ const BookingPage = () => {
     );
   }
 
+  if (!hotelId || !roomId || hotelId === 'null' || roomId === 'null' || (!loading && (!hotel || !room))) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-900 p-6">
+        <div className="card-white p-8 max-w-md text-center space-y-4 border border-slate-200 shadow-xl">
+          <Building2 className="w-14 h-14 text-teal-600 mx-auto" />
+          <h2 className="text-xl font-black text-slate-900">No Room Selected</h2>
+          <p className="text-xs text-slate-500">Please select a hotel room reservation before proceeding to checkout.</p>
+          <button onClick={() => navigate('/search')} className="btn-teal text-xs py-3 px-6 w-full font-bold">
+            Browse Hotel Rooms
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-slate-50 text-slate-900 min-h-screen pb-16">
       
       {/* Top Header */}
-      <div className="bg-white border-b border-slate-200 py-4 px-4 sm:px-6 lg:px-8">
+      <div className="bg-[#d5e7f5]/80 backdrop-blur-md border-b border-sky-200/60 py-4 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
@@ -270,7 +330,7 @@ const BookingPage = () => {
         <div className="border-b border-slate-200 pb-4">
           <h1 className="text-3xl font-black text-slate-900">Complete Your Stay Reservation</h1>
           <p className="text-xs text-slate-500 font-semibold">
-            Select {roomsCount} Room/Villa Number{roomsCount > 1 ? 's' : ''}, meal plan upgrade, arrival time, and proceed to Razorpay payment
+            Review your stay details, meal plan upgrade, arrival time, and proceed to Razorpay payment
           </p>
         </div>
 
@@ -296,11 +356,11 @@ const BookingPage = () => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-bold">
                 <div>
                   <span className="text-slate-400 block uppercase text-[10px]">Check-in</span>
-                  <span className="text-slate-900 font-black">{checkIn}</span>
+                  <span className="text-slate-900 font-black">{formatDisplayDate(checkIn)}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block uppercase text-[10px]">Check-out</span>
-                  <span className="text-slate-900 font-black">{checkOut}</span>
+                  <span className="text-slate-900 font-black">{formatDisplayDate(checkOut)}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block uppercase text-[10px]">Duration</span>
@@ -311,92 +371,16 @@ const BookingPage = () => {
                   <span className="text-slate-900 font-black">{guestsCount} Guests, {roomsCount} Room{roomsCount > 1 ? 's' : ''}</span>
                 </div>
               </div>
-            </div>
 
-            {/* 🔑 ROOM NUMBER SELECTION CARD */}
-            <div className="card-white p-6 border-2 border-teal-500/30 shadow-md space-y-4 bg-gradient-to-b from-teal-50/30 to-white">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-200 pb-3 gap-2">
-                <div>
-                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <KeyRound className="w-5 h-5 text-teal-600" />
-                    {roomsCount === 1
-                      ? 'Select Room / Villa Number'
-                      : `Select ${roomsCount} Room Numbers`}
-                  </h2>
-                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                    {roomsCount === 1
-                      ? 'Click on any available room unit to select it'
-                      : `You requested ${roomsCount} rooms. Select ${roomsCount} room units for your stay.`}
-                  </p>
-                </div>
-
-                <div className="shrink-0">
-                  <span className={`inline-block px-3 py-1.5 rounded-full font-mono text-xs font-black shadow-xs ${selectedRoomNumbers.length === roomsCount
-                    ? 'bg-slate-900 text-teal-400'
-                    : 'bg-amber-500 text-white'
-                    }`}>
-                    SELECTED ({selectedRoomNumbers.length}/{roomsCount}): {selectedRoomNumbers.length > 0 ? selectedRoomNumbers.join(', ') : 'None'}
+              {selectedRoomNumbers.length > 0 && (
+                <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-slate-600 font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    Auto-Allocated Room Unit{roomsCount > 1 ? 's' : ''}:
                   </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-1">
-                {roomNumbersList.map((item) => {
-                  const isSelected = selectedRoomNumbers.includes(item.number);
-                  const isAvailable = item.is_available;
-
-                  return (
-                    <button
-                      key={item.number}
-                      type="button"
-                      disabled={!isAvailable}
-                      onClick={() => handleToggleRoomNumber(item.number)}
-                      className={`p-3.5 rounded-2xl text-left border-2 transition-all flex flex-col justify-between relative overflow-hidden ${!isAvailable
-                        ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-75'
-                        : isSelected
-                          ? 'bg-teal-600 border-teal-600 text-white shadow-lg shadow-teal-600/30 scale-[1.02]'
-                          : 'bg-white border-slate-200 text-slate-800 hover:border-teal-500 hover:bg-teal-50/50'
-                        }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`text-[10px] font-extrabold uppercase tracking-wider ${isSelected ? 'text-teal-100' : isAvailable ? 'text-slate-500' : 'text-slate-400'
-                          }`}>
-                          {item.number.includes('Villa') ? 'Villa Unit' : 'Room Unit'}
-                        </span>
-                        {isSelected ? (
-                          <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
-                        ) : !isAvailable ? (
-                          <Lock className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                        ) : null}
-                      </div>
-
-                      <div className="mt-2">
-                        <span className={`text-base font-black font-mono block ${isSelected ? 'text-white' : 'text-slate-900'
-                          }`}>
-                          {item.number}
-                        </span>
-
-                        <span className={`text-[10px] font-bold block mt-0.5 ${isSelected
-                          ? 'text-teal-100 font-extrabold'
-                          : isAvailable
-                            ? 'text-emerald-600'
-                            : 'text-rose-600'
-                          }`}>
-                          {isSelected
-                            ? '✓ Selected'
-                            : isAvailable
-                              ? '🟢 Available'
-                              : '🔴 Reserved'}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {selectedRoomNumbers.length < roomsCount && (
-                <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-xl text-xs font-bold text-center">
-                  ⚠️ Please select {roomsCount - selectedRoomNumbers.length} more room number(s) to complete your selection of {roomsCount} rooms.
+                  <span className="font-mono font-black text-teal-800 bg-teal-50 border border-teal-200 px-3 py-1 rounded-xl text-xs shadow-2xs">
+                    {selectedRoomNumbers.join(', ')}
+                  </span>
                 </div>
               )}
             </div>
@@ -500,7 +484,7 @@ const BookingPage = () => {
                     required
                     value={guestName}
                     onChange={(e) => setGuestName(e.target.value)}
-                    placeholder="Priya Patel"
+                    placeholder="Full Name"
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
                   />
                 </div>
@@ -515,7 +499,7 @@ const BookingPage = () => {
                       required
                       value={guestEmail}
                       onChange={(e) => setGuestEmail(e.target.value)}
-                      placeholder="priya@example.com"
+                      placeholder="name@example.com"
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
                     />
                   </div>
@@ -641,9 +625,9 @@ const BookingPage = () => {
 
               <div className="space-y-2.5 text-xs font-semibold">
                 <div className="flex justify-between text-slate-600">
-                  <span>Assigned Rooms ({selectedRoomNumbers.length}/{roomsCount})</span>
+                  <span>Allocated Unit{roomsCount > 1 ? 's' : ''}</span>
                   <span className="font-mono font-black text-slate-900 text-right max-w-[150px] truncate">
-                    {selectedRoomNumbers.length > 0 ? selectedRoomNumbers.join(', ') : 'None'}
+                    {selectedRoomNumbers.length > 0 ? selectedRoomNumbers.join(', ') : 'Auto-Allocated'}
                   </span>
                 </div>
 
@@ -679,7 +663,7 @@ const BookingPage = () => {
 
               <button
                 type="submit"
-                disabled={creatingBooking || selectedRoomNumbers.length < roomsCount}
+                disabled={creatingBooking}
                 className="btn-teal w-full py-3.5 text-xs font-black uppercase tracking-wider shadow-lg shadow-teal-600/30 disabled:opacity-50"
               >
                 {creatingBooking ? (

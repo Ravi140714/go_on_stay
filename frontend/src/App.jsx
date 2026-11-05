@@ -12,6 +12,7 @@ import ScrollToTop from './components/ScrollToTop';
 import Home from './pages/Home';
 import AboutUs from './pages/AboutUs';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
 import Register from './pages/Register';
 import Profile from './pages/Profile';
 import HotelSearch from './pages/HotelSearch';
@@ -34,6 +35,9 @@ import StaffDashboard from './pages/staff/StaffDashboard';
 import SupportTickets from './pages/SupportTickets';
 
 import BecomeHost from './pages/BecomeHost';
+import PartnerBenefits from './pages/PartnerBenefits';
+import RealTimeInventory from './pages/RealTimeInventory';
+import Offers from './pages/Offers';
 
 const App = () => {
   return (
@@ -51,8 +55,12 @@ const App = () => {
               <Route path="/search" element={<HotelSearch />} />
               <Route path="/hotels/:id" element={<HotelDetails />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/register" element={<Register />} />
               <Route path="/become-host" element={<BecomeHost />} />
+              <Route path="/partner-benefits" element={<PartnerBenefits />} />
+              <Route path="/real-time-inventory" element={<RealTimeInventory />} />
+              <Route path="/offers" element={<Offers />} />
 
               
               {/* Protected Guest Routes */}
@@ -108,6 +116,14 @@ const App = () => {
               {/* Protected Hotel Owner Routes */}
               <Route
                 path="/owner/dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={['HOTEL_OWNER', 'ADMIN']}>
+                    <OwnerDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/owner/dashboard/:subTab"
                 element={
                   <ProtectedRoute allowedRoles={['HOTEL_OWNER', 'ADMIN']}>
                     <OwnerDashboard />

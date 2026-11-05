@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }) => {
       showToast(message || 'Welcome back!');
       return { success: true, user: userData };
     } catch (err) {
-      const errMsg = err.response?.data?.error || 'Login failed. Please check credentials.';
+      const errMsg = err.response?.data?.error || (err.response ? 'Login failed. Please check credentials.' : 'Cannot connect to backend server. Make sure Django is running.');
       showToast(errMsg, 'error');
       return { success: false, error: errMsg };
     }
@@ -94,6 +94,90 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const becomeHost = async (hostPayload) => {
+    try {
+      let res;
+      try {
+        // 1. Try dedicated host onboarding endpoint
+        res = await api.post('/users/become-host/', hostPayload);
+      } catch (err404) {
+        if (err404.response?.status === 404) {
+          // Fallback to standard registration with HOTEL_OWNER role
+          const registerPayload = {
+            username: hostPayload.username,
+            email: hostPayload.email,
+            password: hostPayload.password,
+            password_confirm: hostPayload.password,
+            first_name: hostPayload.first_name,
+            last_name: hostPayload.last_name,
+            phone_number: hostPayload.phone_number,
+            role: 'HOTEL_OWNER',
+          };
+          res = await api.post('/users/register/', registerPayload);
+        } else {
+          throw err404;
+        }
+      }
+
+      const { user: userData, access, refresh, message } = res.data;
+
+      setUser(userData);
+      setAccessToken(access);
+      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('accessToken', access);
+      localStorage.setItem('refreshToken', refresh);
+
+      // Attempt to save payout destination if user provided payout info
+      if (hostPayload.payout_method) {
+        try {
+          await api.post('/payments/payout-account/', {
+            payout_method: hostPayload.payout_method,
+            bank_name: hostPayload.bank_name,
+            account_number: hostPayload.account_number,
+            ifsc_code: hostPayload.ifsc_code,
+            upi_id: hostPayload.upi_id,
+            account_holder_name: hostPayload.account_holder_name,
+          });
+        } catch (payoutErr) {
+          console.warn('Payout destination post-registration setup fallback:', payoutErr);
+        }
+      }
+
+      showToast(message || 'Host account registered successfully!', 'success');
+      return { success: true, user: userData, data: res.data };
+    } catch (err) {
+      let errMsg = 'Failed to register as host.';
+      if (err.response?.data) {
+        const errors = err.response.data;
+        if (typeof errors === 'string') {
+          if (errors.includes('<html') || errors.includes('<!DOCTYPE')) {
+            errMsg = `Backend endpoint error (${err.response?.status || 500}): Route not found in Django URLs.`;
+          } else {
+            errMsg = errors;
+          }
+        } else if (errors.error) {
+          errMsg = errors.error;
+        } else if (errors.detail) {
+          errMsg = errors.detail;
+        } else if (typeof errors === 'object' && errors !== null) {
+          const keys = Object.keys(errors);
+          if (keys.length > 0) {
+            const val = errors[keys[0]];
+            if (Array.isArray(val)) {
+              errMsg = `${keys[0]}: ${typeof val[0] === 'object' ? JSON.stringify(val[0]) : val[0]}`;
+            } else if (typeof val === 'object' && val !== null) {
+              errMsg = `${keys[0]}: ${JSON.stringify(val)}`;
+            } else {
+              errMsg = `${keys[0]}: ${val}`;
+            }
+          }
+        }
+      }
+      showToast(errMsg, 'error');
+      return { success: false, error: errMsg };
+    }
+  };
+
   const logout = () => {
     setUser(null);
     setAccessToken(null);
@@ -118,12 +202,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const isCustomer = user?.role === 'CUSTOMER';
-  const isHotelOwner = user?.role === 'HOTEL_OWNER';
-  const isHotelStaff = user?.role === 'HOTEL_STAFF';
-  const isAdmin = user?.role === 'ADMIN' || user?.is_superuser;
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.is_superuser;
-  const isSupportAgent = user?.role === 'SUPPORT_AGENT';
+  const roleUpper = (user?.role || '').toUpperCase();
+  const isCustomer = roleUpper === 'CUSTOMER';
+  const isHotelOwner = roleUpper === 'HOTEL_OWNER' || roleUpper === 'HOST' || roleUpper === 'OWNER';
+  const isHotelStaff = roleUpper === 'HOTEL_STAFF' || roleUpper === 'STAFF';
+  const isAdmin = roleUpper === 'ADMIN' || user?.is_superuser;
+  const isSuperAdmin = roleUpper === 'SUPER_ADMIN' || user?.is_superuser;
+  const isSupportAgent = roleUpper === 'SUPPORT_AGENT';
 
   return (
     <AuthContext.Provider
@@ -135,6 +220,7 @@ export const AuthProvider = ({ children }) => {
         showToast,
         login,
         register,
+        becomeHost,
         logout,
         updateProfile,
         isCustomer,

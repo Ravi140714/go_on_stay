@@ -12,6 +12,7 @@ const BookingConfirmation = () => {
 
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const autoPrint = searchParams.get('autoPrint') === 'true';
 
@@ -43,6 +44,19 @@ const BookingConfirmation = () => {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleResendEmail = async () => {
+    if (!booking) return;
+    setSendingEmail(true);
+    try {
+      const res = await api.post(`/bookings/${booking.booking_id}/resend-email/`);
+      showToast(res.data.message || 'Confirmation email with PDF invoice dispatched!', 'success');
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to dispatch confirmation email.', 'error');
+    } finally {
+      setSendingEmail(false);
+    }
   };
 
   const formatDate = (dateStr) => {
@@ -117,6 +131,13 @@ const BookingConfirmation = () => {
 
           <div className="flex items-center gap-3">
             <button
+              onClick={handleResendEmail}
+              disabled={sendingEmail}
+              className="py-2.5 px-4 text-xs font-black uppercase tracking-wider flex items-center gap-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 shadow-sm transition-all disabled:opacity-50"
+            >
+              <Mail className="w-4 h-4 text-teal-600" /> {sendingEmail ? 'Sending...' : 'Email PDF Voucher'}
+            </button>
+            <button
               onClick={handlePrint}
               className="btn-dark py-2.5 px-5 text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-md"
             >
@@ -132,7 +153,7 @@ const BookingConfirmation = () => {
           </div>
           <h1 className="text-3xl font-black text-slate-900">Payment Verified & Booking Confirmed! ✓</h1>
           <p className="text-xs text-slate-600 font-bold max-w-md mx-auto">
-            Your stay reservation has been locked and confirmed with the hotel owner. A printable receipt has been generated below.
+            Your stay reservation has been locked and confirmed with the hotel owner. A confirmation email with official PDF voucher & tax invoice has been sent to your email.
           </p>
           
           <div className="pt-2">
@@ -297,8 +318,25 @@ const BookingConfirmation = () => {
                     <td className="py-3 px-4 text-center text-slate-500">
                       {booking.number_of_nights} Night(s) × {booking.number_of_rooms} Room(s) @ ₹{booking.price_per_night}/night
                     </td>
-                    <td className="py-3 px-4 text-right font-black">₹{parseFloat(booking.subtotal).toFixed(2)}</td>
+                    <td className="py-3 px-4 text-right font-black">
+                      ₹{(parseFloat(booking.price_per_night) * (booking.number_of_nights || 1) * (booking.number_of_rooms || 1)).toFixed(2)}
+                    </td>
                   </tr>
+
+                  {/* Meal Plan Upgrade (if selected) */}
+                  {booking.meal_plan && booking.meal_plan !== 'ROOM_ONLY' && (
+                    <tr className="bg-teal-50/40 text-teal-900">
+                      <td className="py-3 px-4 font-bold">
+                        Meal Plan Upgrade ({booking.meal_plan.replace('_', ' ')})
+                      </td>
+                      <td className="py-3 px-4 text-center text-teal-700 font-semibold">
+                        {booking.number_of_nights} Night(s) × {booking.number_of_rooms} Room(s) Plan Supplement
+                      </td>
+                      <td className="py-3 px-4 text-right font-black text-teal-800">
+                        +₹{Math.max(0, parseFloat(booking.subtotal) - (parseFloat(booking.price_per_night) * (booking.number_of_nights || 1) * (booking.number_of_rooms || 1))).toFixed(2)}
+                      </td>
+                    </tr>
+                  )}
 
                   {parseFloat(booking.cleaning_fee) > 0 && (
                     <tr>
@@ -344,10 +382,10 @@ const BookingConfirmation = () => {
           <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-500 font-semibold gap-3">
             <div className="flex items-center gap-1.5 text-teal-700 font-bold">
               <ShieldCheck className="w-4 h-4 text-teal-600" />
-              Verified 256-Bit Encrypted Payment Certificate • GoOnStay Official Invoice
+              Verified 256-Bit Encrypted Payment Certificate • Book My Room Official Invoice
             </div>
             <div>
-              Support Email: <span className="text-slate-900 font-bold">support@goonstay.com</span>
+              Support Email: <span className="text-slate-900 font-bold">support@bookmyroom.com</span>
             </div>
           </div>
 

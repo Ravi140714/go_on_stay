@@ -4,6 +4,8 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { formatDisplayDate } from '../../utils/dateUtils';
+import Pagination from '../../components/Pagination';
 
 const StaffDashboard = () => {
   const { user, showToast } = useAuth();
@@ -11,6 +13,11 @@ const StaffDashboard = () => {
   const [bookings, setBookings] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   useEffect(() => {
     fetchStaffBookings();
@@ -19,7 +26,7 @@ const StaffDashboard = () => {
   const fetchStaffBookings = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/bookings/');
+      const res = await api.get('/bookings/?page_size=1000');
       setBookings(res.data.results || res.data);
     } catch (err) {
       console.error('Failed to load staff bookings:', err);
@@ -132,7 +139,7 @@ const StaffDashboard = () => {
                       <td colSpan="7" className="p-8 text-center text-slate-400 font-bold">No reservations found matching search query.</td>
                     </tr>
                   ) : (
-                    filteredBookings.map((b) => (
+                    filteredBookings.slice((currentPage - 1) * 10, currentPage * 10).map((b) => (
                       <tr key={b.id} className="hover:bg-slate-50 transition-colors">
                         <td className="p-4 font-mono font-bold text-slate-900">#{b.id}</td>
                         <td className="p-4">
@@ -146,7 +153,9 @@ const StaffDashboard = () => {
                             <span>Units: {b.room_number || 'Room 101'}</span>
                           </div>
                         </td>
-                        <td className="p-4 text-slate-600">{b.check_in} → {b.check_out}</td>
+                        <td className="p-4 text-slate-700 whitespace-nowrap min-w-[170px] font-medium text-xs">
+  {formatDisplayDate(b.check_in)} <span className="text-slate-400 font-normal">→</span> {formatDisplayDate(b.check_out)}
+</td>
                         <td className="p-4">
                           <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
                             b.booking_status === 'CONFIRMED' ? 'bg-sky-50 text-sky-800 border border-sky-200' :
@@ -198,6 +207,13 @@ const StaffDashboard = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination
+              currentPage={currentPage}
+              totalItems={filteredBookings.length}
+              itemsPerPage={10}
+              onPageChange={setCurrentPage}
+              color="teal"
+            />
           </div>
         )}
 

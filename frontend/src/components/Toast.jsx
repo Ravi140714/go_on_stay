@@ -28,7 +28,11 @@ const Toast = () => {
         }}
       >
         {icons[toast.type] || icons.info}
-        <span className="text-sm font-medium pr-2">{toast.message}</span>
+        <span className="text-sm font-medium pr-2">
+          {typeof toast.message === 'object' && toast.message !== null
+            ? (toast.message.error || toast.message.detail || toast.message.message || JSON.stringify(toast.message))
+            : String(toast.message || '')}
+        </span>
       </div>
     </div>
   );

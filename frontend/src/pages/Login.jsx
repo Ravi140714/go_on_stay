@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { KeyRound, Mail, User, Eye, EyeOff, ShieldCheck, Hotel, Sparkles, Star, CheckCircle2, ArrowRight } from 'lucide-react';
+import { KeyRound, Mail, User, Eye, EyeOff, Hotel, Sparkles, Star, CheckCircle2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
-  const { login } = useAuth();
+  const { login, logout, user, showToast } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -15,6 +15,25 @@ const Login = () => {
 
   const from = location.state?.from?.pathname || '/';
 
+  // Clear any browser-cached autofill on mount
+  useEffect(() => {
+    setUsername('');
+    setPassword('');
+    const timer = setTimeout(() => {
+      setUsername('');
+      setPassword('');
+    }, 50);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // If already logged in as Hotel Owner, redirect directly to Hotel Properties
+  useEffect(() => {
+    const roleUpper = (user?.role || '').toUpperCase();
+    if (user && (roleUpper === 'HOTEL_OWNER' || roleUpper === 'HOST' || roleUpper === 'OWNER')) {
+      navigate('/owner/dashboard/properties', { replace: true });
+    }
+  }, [user, navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!username || !password) return;
@@ -23,25 +42,27 @@ const Login = () => {
     setLoading(false);
 
     if (result.success) {
-      const userRole = result.user.role;
-      if (userRole === 'HOTEL_OWNER') {
-        navigate('/owner/dashboard');
-      } else if (userRole === 'ADMIN' || result.user.is_superuser) {
-        navigate('/admin/dashboard');
+      const userRole = (result.user?.role || '').toUpperCase();
+      
+      // RESTRICTION: Admin accounts cannot log in on this customer/owner portal
+      if (userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || result.user?.is_superuser || result.user?.is_staff) {
+        logout();
+        showToast('Invalid username or password.', 'error');
+        return;
+      }
+
+      if (userRole === 'HOTEL_OWNER' || userRole === 'HOST' || userRole === 'OWNER') {
+        navigate('/owner/dashboard/properties', { replace: true });
+        return;
+      }
+
+      // Safely redirect Customers to home page or requested customer page
+      if (from && (from.includes('/owner') || from.includes('/admin') || from === '/login')) {
+        navigate('/', { replace: true });
       } else {
-        // Safely redirect Customers to home page or requested customer page
-        if (from && (from.includes('/owner') || from.includes('/admin') || from === '/login')) {
-          navigate('/', { replace: true });
-        } else {
-          navigate(from || '/', { replace: true });
-        }
+        navigate(from || '/', { replace: true });
       }
     }
-  };
-
-  const handleQuickFill = (u, p) => {
-    setUsername(u);
-    setPassword(p);
   };
 
   return (
@@ -75,45 +96,17 @@ const Login = () => {
             <div>
               <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Welcome Back</h2>
               <p className="mt-1.5 text-xs text-slate-500 font-semibold leading-relaxed">
-                Sign in to manage your bookings, hotel owner dashboard, or profile.
+                Sign in to manage your guest bookings, hotel owner dashboard, or profile.
               </p>
             </div>
           </div>
 
-          {/* Quick Test Login Fillers */}
-          <div className="bg-rose-50/70 border border-rose-200/70 p-3.5 rounded-2xl">
-            <div className="text-[11px] font-black uppercase tracking-wider text-rose-800 mb-2 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-rose-600" />
-              Quick Demo Login Auto-Fill
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-[11px]">
-              <button
-                type="button"
-                onClick={() => handleQuickFill('customer_priya', 'CustomerPassword123!')}
-                className="py-1.5 px-2 rounded-xl bg-white border border-slate-200 text-slate-800 font-bold hover:border-rose-600 hover:text-rose-600 transition-all shadow-2xs text-center"
-              >
-                Customer
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('owner_rahul', 'OwnerPassword123!')}
-                className="py-1.5 px-2 rounded-xl bg-white border border-slate-200 text-slate-800 font-bold hover:border-rose-600 hover:text-rose-600 transition-all shadow-2xs text-center"
-              >
-                Hotel Owner
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('admin', 'AdminPassword123!')}
-                className="py-1.5 px-2 rounded-xl bg-white border border-slate-200 text-slate-800 font-bold hover:border-rose-600 hover:text-rose-600 transition-all shadow-2xs text-center"
-              >
-                Admin
-              </button>
-            </div>
-          </div>
-
           {/* Login Form */}
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            
+          <form className="space-y-4" onSubmit={handleSubmit} autoComplete="off">
+            {/* Anti-autofill dummy inputs to prevent browser keychain auto-population */}
+            <input type="text" name="fake_username_remember" className="hidden" tabIndex="-1" aria-hidden="true" autoComplete="off" />
+            <input type="password" name="fake_password_remember" className="hidden" tabIndex="-1" aria-hidden="true" autoComplete="new-password" />
+
             <div>
               <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
                 Username or Email
@@ -124,10 +117,13 @@ const Login = () => {
                 </div>
                 <input
                   type="text"
+                  name="login_account_id"
+                  id="login_account_id"
+                  autoComplete="off"
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="customer_priya or email"
+                  placeholder="Enter username or registered email"
                   className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-rose-600 focus:bg-white transition-all outline-none focus:ring-2 focus:ring-rose-500/20"
                 />
               </div>
@@ -148,6 +144,9 @@ const Login = () => {
                 </div>
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  name="login_account_token"
+                  id="login_account_token"
+                  autoComplete="new-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -183,12 +182,14 @@ const Login = () => {
             </button>
           </form>
 
-          {/* Footer Link */}
-          <div className="text-center text-xs text-slate-500 font-semibold pt-2 border-t border-slate-100">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-rose-600 font-black hover:underline">
-              Register Here
-            </Link>
+          {/* Footer Links */}
+          <div className="pt-2 border-t border-slate-100 text-center">
+            <div className="text-xs text-slate-500 font-semibold">
+              Don't have an account?{' '}
+              <Link to="/register" className="text-rose-600 font-black hover:underline">
+                Register Here
+              </Link>
+            </div>
           </div>
 
         </div>
@@ -266,4 +267,3 @@ const Login = () => {
 };
 
 export default Login;
-

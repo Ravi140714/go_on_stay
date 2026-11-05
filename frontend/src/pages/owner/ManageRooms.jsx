@@ -23,7 +23,7 @@ const ManageRooms = () => {
       const [hotelRes, roomsRes, bookingsRes] = await Promise.all([
         api.get(`/hotels/${hotelId}/`),
         api.get(`/rooms/by-hotel/${hotelId}/`),
-        api.get('/bookings/')
+        api.get('/bookings/?page_size=1000')
       ]);
       setHotel(hotelRes.data);
       setRooms(roomsRes.data.results || roomsRes.data);

@@ -118,14 +118,10 @@ const Navbar = () => {
 
   const [activeNavSearchTab, setActiveNavSearchTab] = useState(null); // 'where' | 'when' | 'who' | null
   const navSearchRef = useRef(null);
+  const profileDropdownRef = useRef(null);
 
   const navigate = useNavigate();
   const location = useLocation();
-
-  // Hide main website navbar on Admin and Owner dashboard pages so Sidebar takes full screen height
-  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/owner')) {
-    return null;
-  }
 
   useEffect(() => {
     const handleScroll = () => {
@@ -149,6 +145,34 @@ const Navbar = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Close profile dropdown on click outside, touch outside, or Escape key
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setDropdownOpen(false);
+    };
+
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [dropdownOpen]);
+
+  // Close profile dropdown when route changes
+  useEffect(() => {
+    setDropdownOpen(false);
+  }, [location.pathname, location.search]);
 
   const handleNavSearchSubmit = (e) => {
     if (e) e.preventDefault();
@@ -185,8 +209,13 @@ const Navbar = () => {
     SUPPORT_AGENT: <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">Support Agent</span>,
   };
 
+  // Hide main website navbar on Admin and Owner dashboard pages so Sidebar takes full screen height
+  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/owner')) {
+    return null;
+  }
+
   return (
-    <nav className="sticky top-0 left-0 right-0 z-50 glass-header text-slate-900 transition-all duration-300 shadow-xs">
+    <nav className="sticky top-0 left-0 right-0 z-50 bg-[#d5e7f5]/95 backdrop-blur-md border-b border-sky-200/60 text-slate-900 transition-all duration-300 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
           
@@ -343,27 +372,39 @@ const Navbar = () => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wider block">
+                  <div className="space-y-1 cursor-pointer" onClick={() => {
+                    const el = document.getElementById('navbar_search_checkin');
+                    if (el && el.showPicker) { try { el.showPicker(); } catch (e) {} }
+                  }}>
+                    <label htmlFor="navbar_search_checkin" className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wider block cursor-pointer">
                       Check-in
                     </label>
                     <input
+                      id="navbar_search_checkin"
                       type="date"
                       value={searchCheckIn}
+                      onClick={(e) => { try { e.target.showPicker(); } catch (err) {} }}
+                      onFocus={(e) => { try { e.target.showPicker(); } catch (err) {} }}
                       onChange={(e) => setSearchCheckIn(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 cursor-pointer"
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wider block">
+                  <div className="space-y-1 cursor-pointer" onClick={() => {
+                    const el = document.getElementById('navbar_search_checkout');
+                    if (el && el.showPicker) { try { el.showPicker(); } catch (e) {} }
+                  }}>
+                    <label htmlFor="navbar_search_checkout" className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wider block cursor-pointer">
                       Check-out
                     </label>
                     <input
+                      id="navbar_search_checkout"
                       type="date"
                       value={searchCheckOut}
+                      onClick={(e) => { try { e.target.showPicker(); } catch (err) {} }}
+                      onFocus={(e) => { try { e.target.showPicker(); } catch (err) {} }}
                       onChange={(e) => setSearchCheckOut(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 cursor-pointer"
                     />
                   </div>
                 </div>
@@ -420,8 +461,8 @@ const Navbar = () => {
                   <div className="flex items-center gap-2.5">
                     <button
                       type="button"
-                      onClick={() => setSearchAdults(Math.max(1, searchAdults - 1))}
-                      disabled={searchAdults <= 1}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSearchAdults(prev => Math.max(1, (parseInt(prev, 10) || 1) - 1)); }}
+                      disabled={Number(searchAdults) <= 1}
                       className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center text-slate-600 hover:border-slate-800 disabled:opacity-30"
                     >
                       <Minus className="w-3 h-3" />
@@ -429,7 +470,7 @@ const Navbar = () => {
                     <span className="text-xs font-black text-slate-900 w-4 text-center">{searchAdults}</span>
                     <button
                       type="button"
-                      onClick={() => setSearchAdults(Math.min(10, searchAdults + 1))}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSearchAdults(prev => Math.min(10, (parseInt(prev, 10) || 1) + 1)); }}
                       className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center text-slate-600 hover:border-slate-800"
                     >
                       <Plus className="w-3 h-3" />
@@ -446,8 +487,8 @@ const Navbar = () => {
                   <div className="flex items-center gap-2.5">
                     <button
                       type="button"
-                      onClick={() => setSearchChildren(Math.max(0, searchChildren - 1))}
-                      disabled={searchChildren <= 0}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSearchChildren(prev => Math.max(0, (parseInt(prev, 10) || 0) - 1)); }}
+                      disabled={Number(searchChildren) <= 0}
                       className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center text-slate-600 hover:border-slate-800 disabled:opacity-30"
                     >
                       <Minus className="w-3 h-3" />
@@ -455,7 +496,7 @@ const Navbar = () => {
                     <span className="text-xs font-black text-slate-900 w-4 text-center">{searchChildren}</span>
                     <button
                       type="button"
-                      onClick={() => setSearchChildren(Math.min(6, searchChildren + 1))}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSearchChildren(prev => Math.min(6, (parseInt(prev, 10) || 0) + 1)); }}
                       className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center text-slate-600 hover:border-slate-800"
                     >
                       <Plus className="w-3 h-3" />
@@ -472,8 +513,8 @@ const Navbar = () => {
                   <div className="flex items-center gap-2.5">
                     <button
                       type="button"
-                      onClick={() => setSearchRooms(Math.max(1, searchRooms - 1))}
-                      disabled={searchRooms <= 1}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSearchRooms(prev => Math.max(1, (parseInt(prev, 10) || 1) - 1)); }}
+                      disabled={Number(searchRooms) <= 1}
                       className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center text-slate-600 hover:border-slate-800 disabled:opacity-30"
                     >
                       <Minus className="w-3 h-3" />
@@ -481,7 +522,7 @@ const Navbar = () => {
                     <span className="text-xs font-black text-slate-900 w-4 text-center">{searchRooms}</span>
                     <button
                       type="button"
-                      onClick={() => setSearchRooms(Math.min(6, searchRooms + 1))}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSearchRooms(prev => Math.min(6, (parseInt(prev, 10) || 1) + 1)); }}
                       className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center text-slate-600 hover:border-slate-800"
                     >
                       <Plus className="w-3 h-3" />
@@ -515,7 +556,7 @@ const Navbar = () => {
             <NotificationBell />
 
             {/* Profile Avatar Button */}
-            <div className="relative">
+            <div className="relative" ref={profileDropdownRef}>
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
                 className="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-extrabold text-sm shadow-sm hover:shadow-md border-2 border-white ring-2 ring-slate-200/80 hover:ring-rose-500 transition-all cursor-pointer overflow-hidden backdrop-blur-md"
@@ -536,21 +577,29 @@ const Navbar = () => {
                 <div className="absolute right-0 mt-3 w-64 rounded-3xl bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-2xl p-2.5 animate-fade-in z-50">
                   {user ? (
                     <>
-                      <div className="px-3.5 py-2.5 border-b border-slate-100 mb-1 bg-rose-50/50 rounded-xl space-y-1">
+                      <Link
+                        to="/profile"
+                        onClick={() => setDropdownOpen(false)}
+                        className="block px-3.5 py-2.5 border border-rose-100/80 mb-1 bg-rose-50/60 hover:bg-rose-100/70 rounded-2xl space-y-1 transition-all cursor-pointer group shadow-2xs"
+                        title="Click to view & edit your profile"
+                      >
                         <div className="flex items-center justify-between">
-                          <p className="text-xs font-bold text-slate-900">{user.first_name} {user.last_name}</p>
+                          <p className="text-xs font-extrabold text-slate-900 group-hover:text-rose-600 transition-colors flex items-center gap-1.5">
+                            <span>{user.first_name || user.username} {user.last_name || ''}</span>
+                            <span className="text-[10px] text-rose-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                          </p>
                           {roleBadges[user.role]}
                         </div>
                         <p className="text-[11px] text-slate-500 truncate font-mono">{user.email}</p>
-                      </div>
+                      </Link>
 
                       <Link
                         to="/profile"
                         onClick={() => setDropdownOpen(false)}
-                        className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer select-none"
                       >
-                        <User className="w-4 h-4 text-rose-600" />
-                        Manage Profile
+                        <User className="w-4 h-4 text-rose-600 shrink-0 pointer-events-none" />
+                        <span className="pointer-events-none">Manage Profile</span>
                       </Link>
 
                       <Link

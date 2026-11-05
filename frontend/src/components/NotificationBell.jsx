@@ -5,6 +5,33 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { requestFcmToken, onForegroundMessage } from '../services/firebase';
 
+// Shared throttle and cache to prevent duplicate unread-count calls across components
+let globalUnreadPromise = null;
+let lastUnreadFetchTime = 0;
+let cachedUnreadCount = 0;
+
+const getSharedUnreadCount = async () => {
+  const now = Date.now();
+  // Throttle to at most once every 20 seconds across all component instances
+  if (now - lastUnreadFetchTime < 20000 && !globalUnreadPromise) {
+    return cachedUnreadCount;
+  }
+  if (globalUnreadPromise) {
+    return globalUnreadPromise;
+  }
+  globalUnreadPromise = api.get('/notifications/unread-count/')
+    .then(res => {
+      lastUnreadFetchTime = Date.now();
+      cachedUnreadCount = res.data.unread_count || 0;
+      return cachedUnreadCount;
+    })
+    .catch(() => cachedUnreadCount)
+    .finally(() => {
+      globalUnreadPromise = null;
+    });
+  return globalUnreadPromise;
+};
+
 const NotificationBell = () => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
@@ -24,7 +51,7 @@ const NotificationBell = () => {
   useEffect(() => {
     if (user) {
       fetchUnreadCount();
-      const interval = setInterval(fetchUnreadCount, 30000); // Poll every 30 seconds for live push updates
+      const interval = setInterval(fetchUnreadCount, 60000); // Poll every 60 seconds with shared cache
       return () => clearInterval(interval);
     }
   }, [user]);
@@ -190,8 +217,7 @@ const NotificationBell = () => {
 
   const fetchUnreadCount = async () => {
     try {
-      const res = await api.get('/notifications/unread-count/');
-      const newCount = res.data.unread_count || 0;
+      const newCount = await getSharedUnreadCount();
       
       // If unread count increased, fetch latest notification and trigger native push
       if (newCount > prevUnreadRef.current && prevUnreadRef.current !== 0) {
@@ -369,13 +395,19 @@ const NotificationBell = () => {
                     </span>
                   </div>
 
-                  <p className="text-[11px] font-semibold text-slate-600 leading-relaxed">
+                  <p className="text-[11px] font-semibold text-slate-600 leading-relaxed whitespace-pre-line">
                     {n.message}
                   </p>
 
                   <div className="flex items-center justify-between pt-1 border-t border-slate-100/80 text-[10px] font-bold text-slate-500">
                     <Link
-                      to={n.notification_type === 'NEW_BOOKING_OWNER' ? '/owner/dashboard' : n.notification_type === 'HOTEL_APPROVED' || n.notification_type === 'HOTEL_REJECTED' ? '/owner/dashboard' : '/my-bookings'}
+                      to={
+                        n.notification_type === 'PAYOUT_DUE'
+                          ? '/admin/dashboard?tab=SETTLEMENTS&filter=ELIGIBLE'
+                          : n.notification_type === 'PAYOUT_DISBURSED' || n.notification_type === 'PAYOUT_HOLD' || n.notification_type === 'NEW_BOOKING_OWNER' || n.notification_type === 'HOTEL_APPROVED' || n.notification_type === 'HOTEL_REJECTED'
+                          ? '/owner/dashboard'
+                          : '/my-bookings'
+                      }
                       onClick={() => setIsOpen(false)}
                       className="text-teal-600 font-extrabold hover:underline"
                     >

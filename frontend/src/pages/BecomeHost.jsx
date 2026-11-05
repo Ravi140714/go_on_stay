@@ -1,12 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Building2, User, Mail, Phone, Lock, CheckCircle2, ShieldCheck,
   Star, Sparkles, ArrowRight, ArrowLeft, CreditCard, QrCode, Landmark,
-  Zap, Award, Check, RefreshCw
+  Zap, Award, Check, RefreshCw, ChevronDown, AlertCircle, Search
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+
+export const COUNTRY_PHONE_CONFIGS = [
+  { code: 'IN', name: 'India', dialCode: '+91', flag: '🇮🇳', digits: 10, placeholder: '98522 26252' },
+  { code: 'US', name: 'United States', dialCode: '+1', flag: '🇺🇸', digits: 10, placeholder: '55512 34567' },
+  { code: 'GB', name: 'United Kingdom', dialCode: '+44', flag: '🇬🇧', digits: 10, placeholder: '79111 23456' },
+  { code: 'AE', name: 'United Arab Emirates', dialCode: '+971', flag: '🇦🇪', digits: 9, placeholder: '50123 4567' },
+  { code: 'SA', name: 'Saudi Arabia', dialCode: '+966', flag: '🇸🇦', digits: 9, placeholder: '50123 4567' },
+  { code: 'CA', name: 'Canada', dialCode: '+1', flag: '🇨🇦', digits: 10, placeholder: '41612 34567' },
+  { code: 'AU', name: 'Australia', dialCode: '+61', flag: '🇦🇺', digits: 9, placeholder: '41234 5678' },
+  { code: 'SG', name: 'Singapore', dialCode: '+65', flag: '🇸🇬', digits: 8, placeholder: '8123 4567' },
+  { code: 'DE', name: 'Germany', dialCode: '+49', flag: '🇩🇪', digits: 10, placeholder: '15123 45678' },
+  { code: 'FR', name: 'France', dialCode: '+33', flag: '🇫🇷', digits: 9, placeholder: '61234 5678' },
+  { code: 'NZ', name: 'New Zealand', dialCode: '+64', flag: '🇳🇿', digits: 9, placeholder: '21123 4567' },
+  { code: 'QA', name: 'Qatar', dialCode: '+974', flag: '🇶🇦', digits: 8, placeholder: '3312 3456' },
+  { code: 'KW', name: 'Kuwait', dialCode: '+965', flag: '🇰🇼', digits: 8, placeholder: '5123 4567' },
+  { code: 'OM', name: 'Oman', dialCode: '+968', flag: '🇴🇲', digits: 8, placeholder: '9123 4567' },
+  { code: 'BH', name: 'Bahrain', dialCode: '+973', flag: '🇧🇭', digits: 8, placeholder: '3912 3456' },
+  { code: 'MY', name: 'Malaysia', dialCode: '+60', flag: '🇲🇾', digits: 10, placeholder: '12345 67890' },
+  { code: 'TH', name: 'Thailand', dialCode: '+66', flag: '🇹🇭', digits: 9, placeholder: '81234 5678' },
+  { code: 'NP', name: 'Nepal', dialCode: '+977', flag: '🇳🇵', digits: 10, placeholder: '98412 34567' },
+  { code: 'BD', name: 'Bangladesh', dialCode: '+880', flag: '🇧🇩', digits: 10, placeholder: '17123 45678' },
+  { code: 'LK', name: 'Sri Lanka', dialCode: '+94', flag: '🇱🇰', digits: 9, placeholder: '77123 4567' },
+];
+
+const formatPhoneWithSpace = (rawVal, maxDigits = 10) => {
+  const clean = String(rawVal || '').replace(/\D/g, '').slice(0, maxDigits);
+  if (clean.length > 5) {
+    return `${clean.slice(0, 5)} ${clean.slice(5)}`;
+  }
+  return clean;
+};
 
 const SUBSCRIPTION_PLANS = [
   {
@@ -64,7 +95,7 @@ const SUBSCRIPTION_PLANS = [
 
 const BecomeHost = () => {
   const navigate = useNavigate();
-  const { register, showToast } = useAuth();
+  const { register, becomeHost, showToast } = useAuth();
 
   const [step, setStep] = useState(1);
 
@@ -74,18 +105,25 @@ const BecomeHost = () => {
     last_name: '',
     email: '',
     phone_number: '',
+    property_type: 'HOTEL',
     hotel_name: '',
     city: 'Udaipur',
     address: '',
     username: '',
     password: '',
     password_confirm: '',
-    razorpay_key_id: '',
-    razorpay_key_secret: '',
+    // Payout & Settlement Destination
+    payout_method: 'BANK_ACCOUNT', // 'BANK_ACCOUNT' | 'UPI'
+    account_holder_name: '',
+    bank_name: '',
+    account_number: '',
+    confirm_account_number: '',
+    ifsc_code: '',
+    upi_id: '',
   });
 
   // Step 2: Subscription & Payment
-  const [selectedPlan, setSelectedPlan] = useState(SUBSCRIPTION_PLANS[1]); // Default to Gold Plan
+  const [selectedPlan, setSelectedPlan] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('UPI'); // 'UPI' | 'CARD' | 'NETBANKING'
   const [paymentPaid, setPaymentPaid] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
@@ -99,6 +137,108 @@ const BecomeHost = () => {
   const [emailError, setEmailError] = useState('');
   const [checkingEmail, setCheckingEmail] = useState(false);
 
+  // Country & Phone State with space formatting, search and validation
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRY_PHONE_CONFIGS[0]); // India (+91)
+  const [phoneDigits, setPhoneDigits] = useState('');
+  const [formattedPhone, setFormattedPhone] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const countryDropdownRef = useRef(null);
+  const phoneInputRef = useRef(null);
+
+  // Click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target)) {
+        setIsCountryDropdownOpen(false);
+      }
+    };
+    if (isCountryDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isCountryDropdownOpen]);
+
+  // Select a country from the searchable list and focus phone input
+  const handleSelectCountry = (country) => {
+    setSelectedCountry(country);
+    setIsCountryDropdownOpen(false);
+    setCountrySearch('');
+    setHighlightedIndex(0);
+
+    const clean = phoneDigits.slice(0, country.digits);
+    const formatted = formatPhoneWithSpace(clean, country.digits);
+    setPhoneDigits(clean);
+    setFormattedPhone(formatted);
+
+    const finalNumber = country.code === 'IN' ? clean : `${country.dialCode}${clean}`;
+    setFormData((prev) => ({ ...prev, phone_number: finalNumber }));
+
+    if (phoneError) {
+      setPhoneError('');
+    }
+
+    setTimeout(() => {
+      phoneInputRef.current?.focus();
+    }, 50);
+  };
+
+  // Filtered country list based on search query (supports '91', '+91', 'india', 'us', etc.)
+  const filteredCountries = COUNTRY_PHONE_CONFIGS.filter((c) => {
+    const query = countrySearch.trim().toLowerCase().replace('+', '');
+    if (!query) return true;
+    const dial = c.dialCode.replace('+', '').toLowerCase();
+    const name = c.name.toLowerCase();
+    const code = c.code.toLowerCase();
+    return dial.includes(query) || name.includes(query) || code.includes(query);
+  });
+
+  const handleCountrySearchKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (filteredCountries.length ? (prev + 1) % filteredCountries.length : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (filteredCountries.length ? (prev - 1 + filteredCountries.length) % filteredCountries.length : 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (filteredCountries.length > 0) {
+        const target = filteredCountries[highlightedIndex] || filteredCountries[0];
+        handleSelectCountry(target);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsCountryDropdownOpen(false);
+    }
+  };
+
+  const handlePhoneChange = (e) => {
+    const inputVal = e.target.value;
+    const clean = inputVal.replace(/\D/g, '').slice(0, selectedCountry.digits);
+    const formatted = formatPhoneWithSpace(clean, selectedCountry.digits);
+
+    setPhoneDigits(clean);
+    setFormattedPhone(formatted);
+
+    const finalNumber = selectedCountry.code === 'IN' ? clean : `${selectedCountry.dialCode}${clean}`;
+    setFormData((prev) => ({ ...prev, phone_number: finalNumber }));
+
+    // Do not show error while typing
+    if (phoneError) {
+      setPhoneError('');
+    }
+  };
+
+  const handlePhoneBlur = () => {
+    // Validation occurs at submit time (handleNextToStep2)
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -107,19 +247,37 @@ const BecomeHost = () => {
   // Step 1 -> Step 2
   const handleNextToStep2 = async (e) => {
     e.preventDefault();
-    if (!formData.first_name || !formData.last_name || !formData.email || !formData.phone_number || !formData.hotel_name || !formData.address) {
+    setPhoneTouched(true);
+
+    if (!formData.first_name || !formData.last_name || !formData.email || !formData.hotel_name || !formData.address) {
       showToast('Please fill out all required personal & hotel property details.', 'error');
       return;
     }
 
+    if (!phoneDigits || phoneDigits.length < selectedCountry.digits) {
+      setPhoneError('Invalid number');
+      showToast(`Invalid number. Exactly ${selectedCountry.digits} digits are required for ${selectedCountry.name} (${selectedCountry.dialCode}).`, 'error');
+      return;
+    }
+
     setEmailError('');
+    setPhoneError('');
     setCheckingEmail(true);
 
     try {
       const res = await api.get(`/users/check-email/?email=${encodeURIComponent(formData.email.trim())}`);
       if (res.data.exists) {
-        const msg = 'This email address is already registered as a Hotel Owner or Guest. Please sign in or enter a different email address.';
+        const msg = 'This email address is already registered (as Admin, Hotel Owner, or Guest). The same email cannot be used for multiple roles.';
         setEmailError(msg);
+        showToast(msg, 'error');
+        setCheckingEmail(false);
+        return; // DO NOT PROCEED TO STEP 2
+      }
+
+      const phoneRes = await api.get(`/users/check-phone/?phone=${encodeURIComponent(formData.phone_number.trim())}`);
+      if (phoneRes.data.exists) {
+        const msg = 'This mobile number is already registered (as Admin, Hotel Owner, or Guest). The same mobile number cannot be used for multiple roles.';
+        setPhoneError('This mobile number is already registered.');
         showToast(msg, 'error');
         setCheckingEmail(false);
         return; // DO NOT PROCEED TO STEP 2
@@ -139,36 +297,98 @@ const BecomeHost = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Helper to dynamically load Razorpay checkout script if needed
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      const existingScript = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+      if (existingScript) {
+        existingScript.addEventListener('load', () => resolve(true));
+        existingScript.addEventListener('error', () => resolve(false));
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
   // Initiate Real Razorpay Gateway Checkout for Host Subscription (Step 2)
-  const handleInitiateRazorpayPayment = async () => {
+  const handleInitiateRazorpayPayment = async (planToPay = null) => {
+    const targetPlan = planToPay || selectedPlan;
+    if (!targetPlan) {
+      showToast('Please select a membership plan first.', 'error');
+      return;
+    }
+
     setPaymentProcessing(true);
     try {
-      // 1. Create order on backend with key_id & secret configured in .env
+      // 1. Ensure Razorpay SDK is loaded
+      const isLoaded = await loadRazorpayScript();
+      if (!isLoaded || !window.Razorpay) {
+        setPaymentProcessing(false);
+        showToast('Razorpay Checkout SDK could not be loaded. Please check your internet connection.', 'error');
+        return;
+      }
+
+      // 2. Create order on backend with key_id & secret configured in .env
       const orderRes = await api.post('/payments/create-host-subscription-order/', {
-        plan_id: selectedPlan.id,
-        amount: selectedPlan.price
+        plan_id: targetPlan.id,
+        amount: targetPlan.price
       });
 
       const { order_id, amount, currency, key_id } = orderRes.data;
-
-      // Check if Razorpay script is present
-      if (!window.Razorpay) {
-        showToast('Razorpay Checkout SDK is loading or unavailable. Using instant mode...', 'info');
-        handleSimulatePayment();
-        return;
-      }
 
       const options = {
         key: key_id,
         amount: amount,
         currency: currency || 'INR',
-        name: 'GoOnStay - Host Onboarding',
-        description: `Subscription: ${selectedPlan.name}`,
+        name: 'Book My Room',
+        description: `Host Subscription: ${targetPlan.name}`,
         image: '/logo.png',
         order_id: order_id,
+        prefill: {
+          name: `${formData.first_name} ${formData.last_name}`.trim(),
+          email: formData.email,
+          contact: formData.phone_number,
+        },
+        notes: {
+          plan_id: targetPlan.id,
+          plan_name: targetPlan.name,
+          hotel_name: formData.hotel_name,
+        },
+        theme: {
+          color: '#e11d48',
+        },
+        config: {
+          display: {
+            blocks: {
+              upi: {
+                name: "UPI / QR / UPI ID",
+                instruments: [
+                  {
+                    method: "upi",
+                    flows: ["collect", "intent", "qr"]
+                  }
+                ]
+              }
+            },
+            sequence: ["block.upi"],
+            preferences: {
+              show_default_blocks: true
+            }
+          }
+        },
         handler: async function (response) {
           // Verify Payment Signature on server-side
           try {
+            setPaymentProcessing(true);
             const verifyRes = await api.post('/payments/verify-host-subscription/', {
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
@@ -179,59 +399,51 @@ const BecomeHost = () => {
             setTransactionId(txnId);
             setPaymentPaid(true);
             setShowPaymentModal(false);
-            showToast(`🎉 Payment of ₹${selectedPlan.price.toLocaleString()} Successful! Ref: ${txnId}`, 'success');
+            showToast(`🎉 Payment of ₹${targetPlan.price.toLocaleString()} Successful! Ref: ${txnId}`, 'success');
             setStep(3);
             window.scrollTo({ top: 0, behavior: 'smooth' });
           } catch (verifyErr) {
             console.error('Host payment verification error:', verifyErr);
-            showToast('Payment signature verification failed. Please contact support.', 'error');
+            const errDetail = verifyErr.response?.data?.error || 'Payment signature verification failed. Please contact support.';
+            showToast(errDetail, 'error');
           } finally {
             setPaymentProcessing(false);
           }
         },
-        prefill: {
-          name: `${formData.first_name} ${formData.last_name}`,
-          email: formData.email,
-          contact: formData.phone_number,
-        },
-        theme: {
-          color: '#e11d48',
-        },
         modal: {
           ondismiss: function () {
             setPaymentProcessing(false);
-            showToast('Payment window closed. You can retry payment anytime.', 'info');
+            showToast('Payment window closed. Please complete payment to proceed to Step 3.', 'info');
           }
         }
       };
 
       const razorpayInstance = new window.Razorpay(options);
+
+      razorpayInstance.on('payment.failed', function (failRes) {
+        console.error('Razorpay payment failed:', failRes);
+        setPaymentProcessing(false);
+        const reason = failRes.error?.description || 'Payment was declined or failed.';
+        showToast(`Payment failed: ${reason}. Please try again.`, 'error');
+      });
+
       razorpayInstance.open();
     } catch (err) {
-      console.error('Failed to initiate Razorpay payment:', err);
-      showToast('Backend Razorpay order creation error. Switching to backup payment gateway...', 'warning');
-      handleSimulatePayment();
-    }
-  };
-
-  // Backup / Instant Payment Handler
-  const handleSimulatePayment = () => {
-    setPaymentProcessing(true);
-    setTimeout(() => {
-      const generatedTxn = 'TXN_HOST_' + Math.floor(10000000 + Math.random() * 90000000);
-      setTransactionId(generatedTxn);
+      console.error('Failed to create Razorpay order:', err);
+      const errMsg = err.response?.data?.error || 'Failed to initiate Razorpay checkout. Please verify connection.';
+      showToast(errMsg, 'error');
       setPaymentProcessing(false);
-      setPaymentPaid(true);
-      setShowPaymentModal(false);
-      showToast(`Payment of ₹${selectedPlan.price.toLocaleString()} Successful! Transaction Ref: ${generatedTxn}`, 'success');
-      setStep(3);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 1500);
+    }
   };
 
   // Step 3 -> Complete Registration & Create Hotel
   const handleFinalSubmit = async (e) => {
     e.preventDefault();
+    if (!paymentPaid) {
+      showToast('Please complete your host subscription plan payment in Step 2 first.', 'error');
+      setStep(2);
+      return;
+    }
     if (!formData.username || !formData.password || !formData.password_confirm) {
       showToast('Please set your account username and password.', 'error');
       return;
@@ -241,21 +453,53 @@ const BecomeHost = () => {
       return;
     }
 
+    // Payout details validation: either Bank Account OR UPI is mandatory
+    if (formData.payout_method === 'BANK_ACCOUNT') {
+      if (!formData.bank_name || !formData.account_number || !formData.ifsc_code) {
+        showToast('Please provide Bank Name, Account Number, and IFSC Code.', 'error');
+        return;
+      }
+      if (formData.confirm_account_number && formData.account_number !== formData.confirm_account_number) {
+        showToast('Bank Account numbers do not match. Please verify.', 'error');
+        return;
+      }
+    } else if (formData.payout_method === 'UPI') {
+      if (!formData.upi_id || !formData.upi_id.trim()) {
+        showToast('Please enter your valid UPI ID (e.g. name@okhdfcbank).', 'error');
+        return;
+      }
+      if (!formData.upi_id.includes('@')) {
+        showToast('Invalid UPI ID format. It must contain @ (e.g. name@upi).', 'error');
+        return;
+      }
+    } else {
+      showToast('Please select either Bank Account or UPI for settlements.', 'error');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      // 1. Register User as HOTEL_OWNER
-      const regResult = await register({
-        username: formData.username,
-        email: formData.email,
-        first_name: formData.first_name,
-        last_name: formData.last_name,
-        phone_number: formData.phone_number,
+      // 1. Call the dedicated Backend API: POST /api/users/become-host/
+      const hostPayload = {
+        username: formData.username.trim(),
+        email: formData.email.trim(),
         password: formData.password,
-        password_confirm: formData.password_confirm,
-        role: 'HOTEL_OWNER',
-        razorpay_key_id: formData.razorpay_key_id,
-        razorpay_key_secret: formData.razorpay_key_secret,
-      });
+        first_name: formData.first_name.trim(),
+        last_name: formData.last_name.trim(),
+        phone_number: formData.phone_number.trim(),
+        payout_method: formData.payout_method,
+        account_holder_name: (formData.account_holder_name || `${formData.first_name} ${formData.last_name}`).trim(),
+      };
+
+      if (formData.payout_method === 'BANK_ACCOUNT') {
+        hostPayload.bank_name = formData.bank_name.trim();
+        hostPayload.account_number = formData.account_number.trim();
+        hostPayload.ifsc_code = formData.ifsc_code.trim().toUpperCase();
+      } else {
+        hostPayload.upi_id = formData.upi_id.trim();
+      }
+
+      const regResult = await becomeHost(hostPayload);
 
       if (!regResult.success) {
         setSubmitting(false);
@@ -263,29 +507,33 @@ const BecomeHost = () => {
       }
 
       // 2. Automatically Create First Hotel Property for New Host (Pending Super Admin Approval)
-      try {
-        await api.post('/hotels/', {
-          name: formData.hotel_name,
-          city: formData.city,
-          address: formData.address,
-          description: `Luxury property hosted by ${formData.first_name} ${formData.last_name}. Active Subscription: ${selectedPlan.name}.`,
-          star_rating: 4,
-          status: 'SUBMITTED',
-          is_approved: false,
-          check_in_time: '12:00 PM',
-          check_out_time: '11:00 AM',
-          rules: 'Valid Government ID required at check-in.',
-          cancellation_policy: 'Free cancellation up to 24 hours before check-in date.',
-        });
-      } catch (hotelErr) {
-        console.warn('Initial hotel creation fallback:', hotelErr);
+      if (formData.hotel_name) {
+        try {
+          await api.post('/hotels/', {
+            name: formData.hotel_name,
+            property_type: formData.property_type || 'HOTEL',
+            city: formData.city || 'Udaipur',
+            state: formData.state || 'Rajasthan',
+            address: formData.address || `${formData.city || 'Udaipur'}, India`,
+            description: `Luxury property hosted by ${formData.first_name} ${formData.last_name}. Active Subscription: ${selectedPlan?.name || 'Gold'}.`,
+            star_rating: 4,
+            status: 'SUBMITTED',
+            is_approved: false,
+            check_in_time: '12:00 PM',
+            check_out_time: '11:00 AM',
+            rules: 'Valid Government ID required at check-in.',
+            cancellation_policy: 'Free cancellation up to 24 hours before check-in date.',
+          });
+        } catch (hotelErr) {
+          console.warn('Initial hotel creation fallback:', hotelErr);
+        }
       }
 
-      showToast(`🎉 Host Account Created! "${formData.hotel_name}" submitted & awaiting Super Admin Approval.`, 'success');
-      navigate('/owner/dashboard');
+      showToast(`🎉 Host Account Created! Welcome to GoOnStay Host Portal.`, 'success');
+      navigate('/owner/dashboard/properties');
     } catch (err) {
       console.error('Become Host Error:', err);
-      showToast('Registration failed. Please try again.', 'error');
+      showToast(err.response?.data?.error || 'Registration failed. Please try again.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -451,23 +699,161 @@ const BecomeHost = () => {
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
                     Phone Number <span className="text-rose-600">*</span>
                   </label>
-                  <input
-                    type="tel"
-                    required
-                    name="phone_number"
-                    value={formData.phone_number}
-                    onChange={handleInputChange}
-                    placeholder="+91 9876543210"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 focus:bg-white"
-                  />
+
+                  <div
+                    className={`flex rounded-xl border transition-all shadow-sm relative ${
+                      phoneError
+                        ? 'border-rose-500 bg-rose-50/20 ring-2 ring-rose-500/20'
+                        : 'border-slate-300 bg-slate-50 focus-within:border-rose-600 focus-within:bg-white focus-within:ring-2 focus-within:ring-rose-500/20'
+                    }`}
+                  >
+                    {/* Compact Country Selector with Searchable Dropdown */}
+                    <div className="relative flex items-stretch shrink-0" ref={countryDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCountryDropdownOpen((prev) => !prev);
+                          setCountrySearch('');
+                        }}
+                        className="flex items-center gap-1.5 px-2.5 py-2.5 bg-slate-100 hover:bg-slate-200/80 transition-colors border-r border-slate-300 text-xs font-black text-slate-800 shrink-0 select-none cursor-pointer rounded-l-[11px]"
+                        title={`${selectedCountry.name} (${selectedCountry.dialCode}) - Click to search/change country`}
+                      >
+                        <span className="text-sm leading-none">{selectedCountry.flag}</span>
+                        <span className="text-xs font-black tracking-tight">{selectedCountry.dialCode}</span>
+                        <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${isCountryDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {/* Searchable Dropdown Popover */}
+                      {isCountryDropdownOpen && (
+                        <div className="absolute top-full left-0 mt-1.5 w-72 max-h-72 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden flex flex-col animate-fade-in">
+                          {/* Search Header */}
+                          <div className="p-2 border-b border-slate-100 bg-slate-50">
+                            <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-500/20">
+                              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <input
+                                type="text"
+                                autoFocus
+                                value={countrySearch}
+                                onChange={(e) => {
+                                  setCountrySearch(e.target.value);
+                                  setHighlightedIndex(0);
+                                }}
+                                onKeyDown={handleCountrySearchKeyDown}
+                                placeholder="Search '91', 'India', etc... (Enter to select)"
+                                className="w-full text-xs font-bold bg-transparent outline-none text-slate-900 placeholder:text-slate-400"
+                              />
+                              {countrySearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCountrySearch('')}
+                                  className="text-slate-400 hover:text-slate-700 text-xs font-black"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Filtered Country Items List */}
+                          <div className="overflow-y-auto max-h-56 divide-y divide-slate-100 p-1">
+                            {filteredCountries.length > 0 ? (
+                              filteredCountries.map((c, idx) => {
+                                const isSelected = c.code === selectedCountry.code;
+                                const isHighlighted = idx === highlightedIndex;
+                                return (
+                                  <button
+                                    key={c.code}
+                                    type="button"
+                                    onMouseEnter={() => setHighlightedIndex(idx)}
+                                    onClick={() => handleSelectCountry(c)}
+                                    className={`w-full px-3 py-2 text-left flex items-center justify-between rounded-lg transition-colors text-xs ${
+                                      isSelected
+                                        ? 'bg-rose-50 text-rose-900 font-black'
+                                        : isHighlighted
+                                        ? 'bg-slate-100 text-slate-900 font-extrabold ring-1 ring-slate-300'
+                                        : 'hover:bg-slate-50 text-slate-700 font-semibold'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 truncate">
+                                      <span className="text-base">{c.flag}</span>
+                                      <span className="truncate">{c.name}</span>
+                                      {isHighlighted && (
+                                        <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-1.5 py-0.5 rounded ml-1">
+                                          Press Enter ↵
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                      <span className="font-mono text-xs font-bold text-slate-500">{c.dialCode}</span>
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-rose-600" />}
+                                    </div>
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <div className="p-4 text-center text-xs text-slate-400 font-semibold">
+                                No country found for "{countrySearch}"
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Phone Digits Input with Auto-formatting space after 5 digits */}
+                    <input
+                      ref={phoneInputRef}
+                      type="tel"
+                      name="phone_number_display"
+                      value={formattedPhone}
+                      onChange={handlePhoneChange}
+                      onBlur={handlePhoneBlur}
+                      placeholder={selectedCountry.placeholder || '98522 26252'}
+                      className="w-full px-3.5 py-2.5 bg-transparent text-xs font-bold text-slate-900 outline-none placeholder:text-slate-400 rounded-r-[11px]"
+                    />
+                  </div>
+
+                  {/* Validation Error */}
+                  {phoneError && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-rose-600 text-[11px] font-bold animate-fade-in">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{phoneError}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Hotel Name & Destination City */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-100">
-                <div>
+              {/* Property Category / Type, Name & Destination City */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 pt-3 border-t border-slate-100">
+                <div className="sm:col-span-4">
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5 flex items-center justify-between">
+                    <span>Property Type <span className="text-rose-600">*</span></span>
+                  </label>
+                  <select
+                    name="property_type"
+                    value={formData.property_type}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2.5 bg-rose-50/50 border border-rose-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 focus:bg-white cursor-pointer"
+                  >
+                    <option value="HOTEL">🏨 Hotel</option>
+                    <option value="VILLA">🏡 Private Villa (Luxury / Pool)</option>
+                    <option value="HOMESTAY">🏠 Homestay (Heritage / Cozy)</option>
+                    <option value="RESORT">🏖️ Resort & Spa</option>
+                    <option value="APARTMENT">🏢 Apartment / Vacation Home</option>
+                    <option value="GUEST_HOUSE">🏡 Guest House / B&B</option>
+                    <option value="BOUTIQUE_HOTEL">🌟 Boutique Hotel</option>
+                  </select>
+                </div>
+
+                <div className="sm:col-span-5">
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
-                    Hotel / Property Name <span className="text-rose-600">*</span>
+                    {formData.property_type === 'VILLA'
+                      ? 'Villa Name'
+                      : formData.property_type === 'HOMESTAY'
+                      ? 'Homestay Name'
+                      : formData.property_type === 'RESORT'
+                      ? 'Resort Name'
+                      : 'Hotel Name'} <span className="text-rose-600">*</span>
                   </label>
                   <input
                     type="text"
@@ -475,12 +861,18 @@ const BecomeHost = () => {
                     name="hotel_name"
                     value={formData.hotel_name}
                     onChange={handleInputChange}
-                    placeholder="Royal Heritage Palace & Resort"
+                    placeholder={
+                      formData.property_type === 'VILLA'
+                        ? 'The Palm Serenity Private Pool Villa'
+                        : formData.property_type === 'HOMESTAY'
+                        ? 'Lakeview Heritage Homestay'
+                        : 'Royal Heritage Palace & Resort'
+                    }
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 focus:bg-white"
                   />
                 </div>
 
-                <div>
+                <div className="sm:col-span-3">
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
                     Destination City <span className="text-rose-600">*</span>
                   </label>
@@ -557,7 +949,7 @@ const BecomeHost = () => {
             {/* 3 Subscription Plans Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {SUBSCRIPTION_PLANS.map((plan) => {
-                const isSelected = selectedPlan.id === plan.id;
+                const isSelected = selectedPlan?.id === plan.id;
                 return (
                   <div
                     key={plan.id}
@@ -602,7 +994,7 @@ const BecomeHost = () => {
 
                     <button
                       type="button"
-                      className={`w-full py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all ${
+                      className={`w-full py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
                         isSelected
                           ? 'bg-rose-600 text-white shadow-md shadow-rose-600/25'
                           : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
@@ -615,105 +1007,96 @@ const BecomeHost = () => {
               })}
             </div>
 
-            {/* Payment Summary Box */}
-            <div className="card-white p-6 border border-slate-200 shadow-md rounded-3xl space-y-6">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                <div>
-                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                    <CreditCard className="w-5 h-5 text-rose-600" /> Payment Confirmation for {selectedPlan.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                    Instant host account activation with 100% money-back guarantee.
-                  </p>
+            {/* Direct Payment Action Box */}
+            {selectedPlan ? (
+              <div className="card-white p-6 border border-slate-200 shadow-xl rounded-3xl space-y-5 animate-fade-in">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider block">Chosen Membership Plan</span>
+                    <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-rose-600" /> {selectedPlan.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                      Instant host account activation with 100% money-back guarantee.
+                    </p>
+                  </div>
+
+                  <div className="text-left sm:text-right">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Payable Now</span>
+                    <span className="text-2xl font-black text-rose-600">₹{selectedPlan.price.toLocaleString()}</span>
+                    <span className="text-xs text-slate-500 font-bold"> / {selectedPlan.period}</span>
+                  </div>
                 </div>
 
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Payable Now</span>
-                  <span className="text-2xl font-black text-rose-600">₹{selectedPlan.price.toLocaleString()}</span>
-                </div>
-              </div>
-
-              {/* Payment Method Selector Pills */}
-              <div className="space-y-2">
-                <label className="block text-xs font-black uppercase tracking-wider text-slate-800">
-                  Select Payment Method
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Direct Action Buttons */}
+                <div className="flex items-center justify-between pt-2">
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('UPI')}
-                    className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2.5 transition-all ${
-                      paymentMethod === 'UPI'
-                        ? 'border-rose-600 bg-rose-50 text-rose-900 font-black'
-                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-                    }`}
+                    onClick={() => setStep(1)}
+                    className="text-xs font-extrabold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-4 py-2.5 rounded-xl hover:bg-slate-100 cursor-pointer"
                   >
-                    <QrCode className="w-4 h-4 text-rose-600" /> UPI / QR (GPay, PhonePe)
+                    <ArrowLeft className="w-4 h-4" /> Back to Step 1
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('CARD')}
-                    className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2.5 transition-all ${
-                      paymentMethod === 'CARD'
-                        ? 'border-rose-600 bg-rose-50 text-rose-900 font-black'
-                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-                    }`}
+                    disabled={paymentProcessing}
+                    onClick={() => handleInitiateRazorpayPayment(selectedPlan)}
+                    className="btn-rose py-3 px-8 text-xs uppercase tracking-wider font-black rounded-xl shadow-lg shadow-rose-600/30 flex items-center gap-2 cursor-pointer"
                   >
-                    <CreditCard className="w-4 h-4 text-rose-600" /> Credit / Debit Card
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('NETBANKING')}
-                    className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2.5 transition-all ${
-                      paymentMethod === 'NETBANKING'
-                        ? 'border-rose-600 bg-rose-50 text-rose-900 font-black'
-                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Landmark className="w-4 h-4 text-rose-600" /> Net Banking
+                    {paymentProcessing ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Opening Razorpay Gateway...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Make Payment (₹{selectedPlan.price.toLocaleString()})</span>
+                        <ArrowRight className="w-4 h-4 stroke-[3]" />
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
-
-              {/* Step 2 Back & Pay Actions */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+            ) : (
+              <div className="flex items-center justify-between pt-4">
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="text-xs font-extrabold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-4 py-2 rounded-xl hover:bg-slate-100"
+                  className="text-xs font-extrabold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-4 py-2.5 rounded-xl hover:bg-slate-100 cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" /> Back to Step 1
                 </button>
-
-                <button
-                  type="button"
-                  disabled={paymentProcessing}
-                  onClick={handleInitiateRazorpayPayment}
-                  className="btn-rose py-3 px-8 text-xs uppercase tracking-wider font-extrabold rounded-xl shadow-md shadow-rose-600/25 flex items-center gap-2 cursor-pointer"
-                >
-                  {paymentProcessing ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Opening Razorpay Gateway...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Pay ₹{selectedPlan.price.toLocaleString()} via Razorpay</span>
-                      <ArrowRight className="w-4 h-4 stroke-[3]" />
-                    </>
-                  )}
-                </button>
+                <p className="text-xs text-slate-500 font-bold">
+                  👆 Please choose any plan above to proceed with payment.
+                </p>
               </div>
-
-            </div>
+            )}
 
           </div>
         )}
 
         {/* STEP 3: SECURITY & PASSWORD SETUP */}
         {step === 3 && (
+          !paymentPaid ? (
+            <div className="card-white p-8 border border-amber-200 bg-amber-50/60 rounded-3xl text-center space-y-4 animate-fade-in">
+              <div className="w-14 h-14 bg-amber-100 border border-amber-200 rounded-full flex items-center justify-center mx-auto text-amber-700">
+                <ShieldCheck className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-black text-slate-900">Host Subscription Payment Required</h2>
+              <p className="text-xs text-slate-600 font-semibold max-w-md mx-auto">
+                Step 3 is locked until your host subscription plan payment is completed and verified via Razorpay.
+              </p>
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="btn-rose py-3 px-8 text-xs uppercase tracking-wider font-extrabold rounded-xl shadow-md cursor-pointer inline-flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Return to Step 2 & Complete Payment</span>
+              </button>
+            </div>
+          ) : (
           <div className="card-white p-6 sm:p-8 space-y-6 border border-slate-200 shadow-lg rounded-3xl animate-fade-in">
             <div className="border-b border-slate-100 pb-4">
               <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
@@ -775,53 +1158,183 @@ const BecomeHost = () => {
                     Confirm Password <span className="text-rose-600">*</span>
                   </label>
                   <input
-                    type="password"
+                    type="text"
                     required
                     name="password_confirm"
                     value={formData.password_confirm}
                     onChange={handleInputChange}
-                    placeholder="••••••••••••"
+                    placeholder="Re-enter password"
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 focus:bg-white"
                   />
                 </div>
               </div>
 
-              {/* Hotel Owner Custom Razorpay Merchant Keys (For Direct Customer Payments) */}
-              <div className="p-4 rounded-2xl bg-rose-50/60 border border-rose-200/80 space-y-3">
+              {/* Hotel Owner Settlement & Payout Destination Setup */}
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-black uppercase tracking-wider text-rose-900">
-                    Hotel Owner Razorpay Merchant Keys (Direct Customer Payments)
-                  </label>
-                  <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-white text-rose-700 border border-rose-200">
-                    Recommended
+                  <div className="flex items-center gap-2">
+                    <Landmark className="w-5 h-5 text-rose-600 shrink-0" />
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                        Settlement & Payout Destination
+                      </h3>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Your hotel payouts are settled here after the 7-day post check-out holding period.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    Platform Protected
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-600 font-semibold leading-relaxed">
-                  Enter your Razorpay Key ID and Secret so whenever customers book your hotel room, 100% room payments go directly into your personal Razorpay account. (Can also be set or updated anytime in Portal Settings).
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-slate-700 mb-1">Razorpay Key ID</label>
-                    <input
-                      type="text"
-                      name="razorpay_key_id"
-                      value={formData.razorpay_key_id}
-                      onChange={handleInputChange}
-                      placeholder="rzp_live_xxxxxxxx or rzp_test_xxxx"
-                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold outline-none focus:border-rose-600"
-                    />
+
+                {/* Method Selector Tabs */}
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200/60 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, payout_method: 'BANK_ACCOUNT' }))}
+                    className={`py-2 px-3 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                      formData.payout_method === 'BANK_ACCOUNT'
+                        ? 'bg-white text-rose-600 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Landmark className="w-3.5 h-3.5" />
+                    <span>Bank Account (NEFT/IMPS)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, payout_method: 'UPI' }))}
+                    className={`py-2 px-3 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                      formData.payout_method === 'UPI'
+                        ? 'bg-white text-rose-600 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>UPI Instant Settlement</span>
+                  </button>
+                </div>
+
+                {formData.payout_method === 'BANK_ACCOUNT' ? (
+                  <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-700 mb-1">
+                          Account Holder Name <span className="text-rose-600 font-black">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          name="account_holder_name"
+                          value={formData.account_holder_name}
+                          onChange={handleInputChange}
+                          placeholder={formData.first_name ? `${formData.first_name} ${formData.last_name}` : "Rajesh Sharma"}
+                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-700 mb-1">
+                          Bank Name <span className="text-rose-600 font-black">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          name="bank_name"
+                          value={formData.bank_name}
+                          onChange={handleInputChange}
+                          placeholder="HDFC Bank / State Bank of India"
+                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-1">
+                        <label className="block text-[10px] font-black uppercase text-slate-700 mb-1">
+                          Bank Account Number <span className="text-rose-600 font-black">*</span>
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          name="account_number"
+                          value={formData.account_number}
+                          onChange={handleInputChange}
+                          placeholder="9 to 18 digits"
+                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold outline-none focus:border-rose-600"
+                        />
+                      </div>
+                      <div className="sm:col-span-1">
+                        <label className="block text-[10px] font-black uppercase text-slate-700 mb-1">
+                          Confirm Account Number <span className="text-rose-600 font-black">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          name="confirm_account_number"
+                          value={formData.confirm_account_number}
+                          onChange={handleInputChange}
+                          placeholder="Re-enter account number"
+                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold outline-none focus:border-rose-600"
+                        />
+                      </div>
+                      <div className="sm:col-span-1">
+                        <label className="block text-[10px] font-black uppercase text-slate-700 mb-1">
+                          IFSC Code <span className="text-rose-600 font-black">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          name="ifsc_code"
+                          value={formData.ifsc_code}
+                          onChange={(e) => setFormData(prev => ({ ...prev, ifsc_code: e.target.value.toUpperCase() }))}
+                          placeholder="HDFC0001234"
+                          maxLength={11}
+                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold uppercase outline-none focus:border-rose-600"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-slate-700 mb-1">Razorpay Key Secret</label>
-                    <input
-                      type="password"
-                      name="razorpay_key_secret"
-                      value={formData.razorpay_key_secret}
-                      onChange={handleInputChange}
-                      placeholder="••••••••••••••••"
-                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold outline-none focus:border-rose-600"
-                    />
+                ) : (
+                  <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-700 mb-1">
+                          Registered UPI ID (VPA) <span className="text-rose-600 font-black">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          name="upi_id"
+                          value={formData.upi_id}
+                          onChange={handleInputChange}
+                          placeholder="yourhotel@okhdfcbank"
+                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold outline-none focus:border-rose-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-700 mb-1">
+                          UPI Account Holder Name <span className="text-rose-600 font-black">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          name="account_holder_name"
+                          value={formData.account_holder_name}
+                          onChange={handleInputChange}
+                          placeholder={formData.first_name ? `${formData.first_name} ${formData.last_name}` : "Rajesh Sharma"}
+                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600"
+                        />
+                      </div>
+                    </div>
                   </div>
+                )}
+
+                <div className="text-[11px] text-slate-500 font-medium leading-relaxed bg-white p-3 rounded-xl border border-slate-200/80 flex items-start gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Security Notice:</strong> All guest payments are collected through Book My Room’s approved payment arrangement. Your bank account details are encrypted and masked for your security. Net payouts are disbursed after the 7-day holding period.
+                  </span>
                 </div>
               </div>
 
@@ -866,6 +1379,7 @@ const BecomeHost = () => {
 
             </form>
           </div>
+          )
         )}
 
       </div>

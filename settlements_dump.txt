@@ -1,0 +1,36 @@
+Status: 200
+Total: 34
+Settlement #50: ref=KH-2026-8B5256 | b=111 | s_status=REVERSED | b_status=CANCELLED | p_status=REFUNDED | guest=Rutvik Naliyadhara
+Settlement #49: ref=KH-2026-2727F2 | b=110 | s_status=ON_HOLD | b_status=CONFIRMED | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #48: ref=KH-2026-CAE37A | b=109 | s_status=ON_HOLD | b_status=CONFIRMED | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #47: ref=KH-2026-76291D | b=108 | s_status=REVERSED | b_status=CANCELLED | p_status=REFUNDED | guest=Rutvik Naliyadhara
+Settlement #46: ref=KH-2026-066976 | b=107 | s_status=REVERSED | b_status=CANCELLED | p_status=REFUNDED | guest=Rutvik Naliyadhara
+Settlement #45: ref=KH-2026-C0B6B8 | b=106 | s_status=ON_HOLD | b_status=CONFIRMED | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #44: ref=KH-2026-89A806 | b=105 | s_status=ON_HOLD | b_status=CONFIRMED | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #43: ref=KH-2026-8B8B6A | b=104 | s_status=REVERSED | b_status=CANCELLED | p_status=REFUNDED | guest=Rutvik Naliyadhara
+Settlement #42: ref=KH-2026-7A3D17 | b=103 | s_status=REVERSED | b_status=CANCELLED | p_status=REFUNDED | guest=Rutvik Naliyadhara
+Settlement #41: ref=KH-2026-40314E | b=102 | s_status=REVERSED | b_status=CANCELLED | p_status=REFUNDED | guest=Priya Patel
+Settlement #40: ref=KH-2026-72161B | b=101 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Priya Patel
+Settlement #39: ref=KH-2026-D59CB4 | b=98 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #38: ref=KH-2026-45D3BF | b=97 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #37: ref=KH-2026-68EE1B | b=96 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Priya Patel
+Settlement #36: ref=KH-2026-273EB9 | b=95 | s_status=REVERSED | b_status=CANCELLED | p_status=REFUNDED | guest=Priya Patel
+Settlement #35: ref=KH-2026-989144 | b=91 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Priya Patel
+Settlement #34: ref=KH-2026-C90BD8 | b=90 | s_status=ON_HOLD | b_status=CANCELLED | p_status=REFUNDED | guest=rutvik patel
+Settlement #33: ref=KH-2026-EC3DDF | b=89 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #32: ref=KH-2026-0DC8EB | b=88 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #31: ref=KH-2026-F64EC8 | b=87 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=rutvik patel
+Settlement #30: ref=KH-2026-DEA173 | b=86 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=rutvik patel
+Settlement #29: ref=KH-2026-4B19DE | b=85 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=rutvik patel
+Settlement #28: ref=KH-2026-87B8B9 | b=84 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #27: ref=KH-2026-9D38ED | b=83 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Priya Patel
+Settlement #26: ref=KH-2026-58EC3B | b=82 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Prashant Patel
+Settlement #25: ref=KH-2026-96A3F0 | b=80 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=rutvik patel
+Settlement #24: ref=KH-2026-F07B92 | b=79 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Priya Patel
+Settlement #23: ref=KH-2026-A1D993 | b=77 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Priya Patel
+Settlement #22: ref=KH-2026-118142 | b=76 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #21: ref=KH-2026-CEAFC8 | b=75 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Priya Patel
+Settlement #20: ref=KH-2026-E337BD | b=74 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Priya Patel
+Settlement #19: ref=KH-2026-886347 | b=73 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Priya Patel
+Settlement #18: ref=KH-2026-1710C4 | b=72 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Rutvik Naliyadhara
+Settlement #17: ref=KH-2026-526E24 | b=66 | s_status=PAID | b_status=CHECKED_OUT | p_status=PAID | guest=Rutvik Naliyadhara

@@ -100,8 +100,11 @@ const HotelDetails = () => {
 
   const saveRecentlyViewed = (hotelData) => {
     try {
+      if (!hotelData || !hotelData.name || hotelData.name.toLowerCase().includes('test')) {
+        return; // Do not save test hotels
+      }
       const existing = JSON.parse(localStorage.getItem('bmr_recently_viewed') || '[]');
-      const filtered = existing.filter(item => item.id !== hotelData.id);
+      const filtered = existing.filter(item => item.id !== hotelData.id && !item.name?.toLowerCase().includes('test'));
       const itemToSave = {
         id: hotelData.id,
         name: hotelData.name,
@@ -218,7 +221,7 @@ const HotelDetails = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-900">
+      <div className="min-h-screen flex items-center justify-center bg-[#eaf3f9] text-slate-900">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
           <p className="text-xs font-bold text-slate-500">Loading hotel details...</p>
@@ -229,7 +232,7 @@ const HotelDetails = () => {
 
   if (!hotel) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-900 p-6">
+      <div className="min-h-screen flex items-center justify-center bg-[#eaf3f9] text-slate-900 p-6">
         <div className="card-white p-8 max-w-md text-center">
           <h2 className="text-xl font-black text-teal-600">Hotel Not Found</h2>
           <p className="text-xs text-slate-500 mt-2 mb-6">The requested hotel property does not exist or has been unlisted.</p>
@@ -242,10 +245,10 @@ const HotelDetails = () => {
   }
 
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen pb-16">
+    <div className="bg-[#eaf3f9] text-slate-900 min-h-screen pb-16">
       
       {/* Top Breadcrumb Header */}
-      <div className="bg-white border-b border-slate-200 py-4 px-4 sm:px-6 lg:px-8">
+      <div className="bg-[#d5e7f5]/80 backdrop-blur-md border-b border-sky-200/60 py-4 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
@@ -384,29 +387,59 @@ const HotelDetails = () => {
         <div className="card-white p-6 border border-teal-100 shadow-md">
           <form onSubmit={handleDateUpdate} className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
             
-            <div className="sm:col-span-4">
-              <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1">
+            <div
+              className="sm:col-span-4 cursor-pointer"
+              onClick={() => {
+                const el = document.getElementById('hotel_details_checkin');
+                if (el && el.showPicker) {
+                  try { el.showPicker(); } catch (e) {}
+                }
+              }}
+            >
+              <label htmlFor="hotel_details_checkin" className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1 cursor-pointer">
                 <Calendar className="w-3.5 h-3.5 text-teal-600" /> Check-in Date
               </label>
               <input
+                id="hotel_details_checkin"
                 type="date"
                 required
                 value={selectedCheckIn}
+                onClick={(e) => {
+                  try { e.target.showPicker(); } catch (err) {}
+                }}
+                onFocus={(e) => {
+                  try { e.target.showPicker(); } catch (err) {}
+                }}
                 onChange={(e) => setSelectedCheckIn(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-extrabold outline-none focus:border-teal-600"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-extrabold outline-none focus:border-teal-600 cursor-pointer"
               />
             </div>
 
-            <div className="sm:col-span-4">
-              <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1">
+            <div
+              className="sm:col-span-4 cursor-pointer"
+              onClick={() => {
+                const el = document.getElementById('hotel_details_checkout');
+                if (el && el.showPicker) {
+                  try { el.showPicker(); } catch (e) {}
+                }
+              }}
+            >
+              <label htmlFor="hotel_details_checkout" className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1 cursor-pointer">
                 <Calendar className="w-3.5 h-3.5 text-teal-600" /> Check-out Date
               </label>
               <input
+                id="hotel_details_checkout"
                 type="date"
                 required
                 value={selectedCheckOut}
+                onClick={(e) => {
+                  try { e.target.showPicker(); } catch (err) {}
+                }}
+                onFocus={(e) => {
+                  try { e.target.showPicker(); } catch (err) {}
+                }}
                 onChange={(e) => setSelectedCheckOut(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-extrabold outline-none focus:border-teal-600"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-extrabold outline-none focus:border-teal-600 cursor-pointer"
               />
             </div>
 
