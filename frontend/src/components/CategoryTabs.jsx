@@ -42,7 +42,7 @@ const CategoryTabs = ({ selectedCategory = 'HOTELS', onSelectCategory, className
 
         <span className={`text-xs sm:text-sm font-extrabold tracking-tight transition-colors mt-0.5 ${
           selectedCategory === 'HOTELS'
-            ? 'text-[#0084ff]'
+            ? 'text-[#0284C7]'
             : 'text-slate-700 group-hover:text-slate-900'
         }`}>
           Hotels
@@ -50,7 +50,7 @@ const CategoryTabs = ({ selectedCategory = 'HOTELS', onSelectCategory, className
 
         {/* Active Blue Indicator Underline */}
         {selectedCategory === 'HOTELS' ? (
-          <div className="absolute -bottom-px left-0 right-0 h-[3px] bg-[#0084ff] rounded-full shadow-xs animate-in fade-in duration-200"></div>
+          <div className="absolute -bottom-px left-0 right-0 h-[3px] bg-[#0284C7] rounded-full shadow-xs animate-in fade-in duration-200"></div>
         ) : (
           <div className="absolute -bottom-px left-0 right-0 h-[3px] bg-transparent"></div>
         )}
@@ -94,7 +94,7 @@ const CategoryTabs = ({ selectedCategory = 'HOTELS', onSelectCategory, className
 
         <span className={`text-xs sm:text-sm font-extrabold tracking-tight transition-colors mt-0.5 ${
           selectedCategory === 'VILLAS'
-            ? 'text-[#0084ff]'
+            ? 'text-[#0284C7]'
             : 'text-slate-700 group-hover:text-slate-900'
         }`}>
           Villas & Homestays
@@ -102,7 +102,7 @@ const CategoryTabs = ({ selectedCategory = 'HOTELS', onSelectCategory, className
 
         {/* Active Blue Indicator Underline */}
         {selectedCategory === 'VILLAS' ? (
-          <div className="absolute -bottom-px left-0 right-0 h-[3px] bg-[#0084ff] rounded-full shadow-xs animate-in fade-in duration-200"></div>
+          <div className="absolute -bottom-px left-0 right-0 h-[3px] bg-[#0284C7] rounded-full shadow-xs animate-in fade-in duration-200"></div>
         ) : (
           <div className="absolute -bottom-px left-0 right-0 h-[3px] bg-transparent"></div>
         )}

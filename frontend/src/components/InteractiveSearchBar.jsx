@@ -258,7 +258,7 @@ const InteractiveSearchBar = ({
         <button
           type="button"
           onClick={handleSearchSubmit}
-          className="rounded-full bg-[#207a72] hover:bg-[#18645d] text-white flex items-center justify-center font-bold px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm shadow-md hover:shadow-lg active:scale-95 transition-all shrink-0 ml-1 cursor-pointer"
+          className="rounded-full bg-[#0284C7] hover:bg-[#0369A1] text-white flex items-center justify-center font-bold px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm shadow-[0_4px_12px_rgba(2,132,199,0.25)] hover:shadow-lg active:scale-95 transition-all shrink-0 ml-1 cursor-pointer"
           title="Find Rooms"
         >
           <span>Find Rooms</span>
@@ -408,7 +408,7 @@ const InteractiveSearchBar = ({
           <button
             type="button"
             onClick={() => setActiveTab('who')}
-            className="w-full py-2.5 text-xs font-extrabold uppercase tracking-wider bg-[#207a72] hover:bg-[#18645d] text-white rounded-xl transition-colors shadow-md shadow-[#207a72]/20 cursor-pointer"
+            className="w-full py-2.5 text-xs font-extrabold uppercase tracking-wider bg-[#0284C7] hover:bg-[#0369A1] text-white rounded-full transition-colors shadow-[0_4px_12px_rgba(2,132,199,0.25)] cursor-pointer"
           >
             Continue to Guests & Rooms
           </button>
@@ -594,7 +594,7 @@ const InteractiveSearchBar = ({
           <button
             type="button"
             onClick={handleSearchSubmit}
-            className="w-full py-3 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-[#207a72]/20 bg-[#207a72] text-white rounded-xl hover:bg-[#18645d] transition-colors cursor-pointer"
+            className="w-full py-3 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(2,132,199,0.25)] bg-[#0284C7] text-white rounded-full hover:bg-[#0369A1] transition-colors cursor-pointer"
           >
             <Search className="w-4 h-4 stroke-[3]" /> Search Available Stays
           </button>

@@ -4,9 +4,9 @@
 :root {
   --font-primary: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
-  --color-primary: #e11d48;
-  --color-primary-hover: #be123c;
-  --color-primary-light: #fff1f2;
+  --color-primary: #0284C7;
+  --color-primary-hover: #0369A1;
+  --color-primary-light: #F0F9FF;
   
   --color-dark: #0f172a;
   --color-body-bg: #f8fafc;
@@ -76,83 +76,165 @@ button {
   border-radius: 0.75rem; /* 12px */
 }
 
-/* Buttons */
-button, .btn, a.btn, input[type="button"], input[type="submit"] {
+/* -------------------------------------------------------------
+   GLOBAL BUTTON SYSTEM - MATCHING HOTEL OWNER SIDE EXACTLY
+------------------------------------------------------------- */
+button, .btn, a.btn, [class*="btn-"], input[type="button"], input[type="submit"] {
   font-family: inherit;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.5rem !important;
+  white-space: nowrap !important;
   text-align: center;
   line-height: 1.25;
   user-select: none;
   cursor: pointer;
   box-sizing: border-box;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: all 0.15s ease-in-out;
 }
 
-button:active, .btn:active, a.btn:active {
+button:active, .btn:active, a.btn:active, [class*="btn-"]:active {
   opacity: 0.92;
+  transform: scale(0.98);
 }
 
-/* Primary Button (Clean Rose/Red) */
-.btn-teal, .btn-primary, .btn-indigo, .btn-rose, .btn-red, .btn-cyan, .btn-violet {
-  background: #e11d48;
-  color: #ffffff !important;
-  padding: 0.5rem 1rem;
-  min-height: 38px;
-  border-radius: 0.5rem; /* 8px */
-  font-size: 0.875rem; /* 14px */
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  border: 1px solid transparent;
+/* 1. Primary Buttons */
+.btn-primary,
+.btn-teal,
+.btn-rose,
+.btn-indigo,
+.btn-cyan,
+.btn-sky,
+.btn-violet {
+  background-color: #0284C7 !important;
+  color: #FFFFFF !important;
+  padding: 0.55rem 1.25rem !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25) !important;
+  border: 1px solid transparent !important;
+  font-weight: 800 !important;
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.5rem !important;
+  white-space: nowrap !important;
 }
 
-.btn-teal:hover, .btn-primary:hover, .btn-indigo:hover, .btn-rose:hover, .btn-red:hover, .btn-cyan:hover, .btn-violet:hover {
-  background: #be123c;
+.btn-primary:hover,
+.btn-teal:hover,
+.btn-rose:hover,
+.btn-indigo:hover,
+.btn-cyan:hover,
+.btn-sky:hover,
+.btn-violet:hover {
+  background-color: #0369A1 !important;
+  color: #FFFFFF !important;
 }
 
-/* Secondary Button */
-.btn-secondary, .btn-light, .btn-dark {
-  background: #ffffff;
-  color: #334155 !important;
-  padding: 0.5rem 1rem;
-  min-height: 38px;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  border: 1px solid #cbd5e1;
+.btn-primary svg,
+.btn-teal svg,
+.btn-rose svg,
+.btn-indigo svg,
+.btn-cyan svg,
+.btn-sky svg,
+.btn-violet svg {
+  color: #FFFFFF !important;
+  stroke: #FFFFFF !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  flex-shrink: 0 !important;
 }
 
-.btn-secondary:hover, .btn-light:hover, .btn-dark:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-  color: #0f172a !important;
+/* 2. Secondary Buttons */
+.btn-secondary,
+.btn-light,
+.btn-dark,
+.btn-outline {
+  background-color: #FFFFFF !important;
+  color: #475569 !important;
+  padding: 0.55rem 1.25rem !important;
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.5rem !important;
+  white-space: nowrap !important;
 }
 
-.btn-outline-teal, .btn-outline-indigo, .btn-outline-red {
-  background: transparent;
-  border: 1px solid #e11d48;
-  color: #e11d48;
-  padding: 0.5rem 1rem;
-  min-height: 38px;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
+.btn-secondary:hover,
+.btn-light:hover,
+.btn-dark:hover,
+.btn-outline:hover {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+  border-color: #CBD5E1 !important;
 }
 
-.btn-outline-teal:hover, .btn-outline-indigo:hover, .btn-outline-red:hover {
-  background: #fff1f2;
+.btn-secondary svg,
+.btn-light svg,
+.btn-dark svg,
+.btn-outline svg {
+  color: #475569 !important;
+}
+
+/* 3. Destructive Buttons (Delete, Cancel, Remove) */
+.btn-danger,
+.btn-destructive,
+.btn-red,
+.btn-cancel {
+  background-color: #DC2626 !important;
+  color: #FFFFFF !important;
+  padding: 0.55rem 1.25rem !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25) !important;
+  border: 1px solid transparent !important;
+  font-weight: 800 !important;
+}
+
+.btn-danger:hover,
+.btn-destructive:hover,
+.btn-red:hover,
+.btn-cancel:hover {
+  background-color: #B91C1C !important;
+  color: #FFFFFF !important;
+}
+
+.btn-danger svg,
+.btn-destructive svg,
+.btn-red svg,
+.btn-cancel svg {
+  color: #FFFFFF !important;
+  stroke: #FFFFFF !important;
+}
+
+/* 4. Disabled Buttons */
+button:disabled,
+.btn:disabled,
+a.btn:disabled,
+button[disabled],
+.btn[disabled],
+input[type="submit"]:disabled,
+input[type="button"]:disabled {
+  background-color: #E2E8F0 !important;
+  color: #94A3B8 !important;
+  border-color: #E2E8F0 !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+  pointer-events: none;
+  opacity: 0.85 !important;
+}
+
+button:disabled svg,
+.btn:disabled svg,
+a.btn:disabled svg {
+  color: #94A3B8 !important;
+  stroke: #94A3B8 !important;
 }
 
 /* Badges */

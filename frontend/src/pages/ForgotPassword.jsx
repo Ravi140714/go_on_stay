@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { parseApiError } from '../utils/errorHandler';
+import FieldError from '../components/FieldError';
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
@@ -24,6 +26,7 @@ const ForgotPassword = () => {
 
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   // Resend OTP countdown timer
   useEffect(() => {
@@ -36,8 +39,12 @@ const ForgotPassword = () => {
   // Step 1: Request Password Reset OTP
   const handleRequestOtp = async (e) => {
     e.preventDefault();
+    setFieldErrors({});
+
     if (!identifier.trim()) {
-      showToast('Please enter your username or registered email address.', 'error');
+      const msg = 'Please enter your username or registered email address.';
+      setFieldErrors({ identifier: msg });
+      showToast(msg, 'error');
       return;
     }
 
@@ -51,8 +58,9 @@ const ForgotPassword = () => {
       setStep(2);
       setCountdown(60);
     } catch (err) {
-      const errMsg = err.response?.data?.error || 'Account not found. Please verify username or email.';
-      showToast(errMsg, 'error');
+      const parsed = parseApiError(err, 'Account not found. Please verify username or email.');
+      setFieldErrors({ identifier: parsed.message, ...parsed.fieldErrors });
+      showToast(parsed.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -61,14 +69,17 @@ const ForgotPassword = () => {
   // Step 2: Verify OTP & Proceed to New Password
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
+    setFieldErrors({});
+
     if (!otp.trim() || otp.trim().length !== 6) {
-      showToast('Please enter the valid 6-digit OTP code.', 'error');
+      const msg = 'Invalid OTP. Please enter the correct 6-digit code.';
+      setFieldErrors({ otp: msg });
+      showToast(msg, 'error');
       return;
     }
 
     setLoading(true);
     try {
-      // Pre-verify OTP endpoint
       const res = await api.post('/users/verify-otp/', {
         email: email,
         otp: otp.trim()
@@ -76,8 +87,9 @@ const ForgotPassword = () => {
       showToast(res.data.message || 'OTP code verified successfully!', 'success');
       setStep(3);
     } catch (err) {
-      const errMsg = err.response?.data?.error || 'Invalid or expired OTP code. Please try again.';
-      showToast(errMsg, 'error');
+      const parsed = parseApiError(err, 'Invalid or expired OTP code. Please try again.');
+      setFieldErrors({ otp: parsed.message, ...parsed.fieldErrors });
+      showToast(parsed.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -86,13 +98,15 @@ const ForgotPassword = () => {
   // Resend OTP Handler
   const handleResendOtp = async () => {
     if (countdown > 0) return;
+    setFieldErrors({});
     setLoading(true);
     try {
       const res = await api.post('/users/forgot-password/', { identifier: email || identifier });
       showToast(`A fresh verification code was sent to ${maskedEmail || email}.`, 'success');
       setCountdown(60);
     } catch (err) {
-      showToast(err.response?.data?.error || 'Could not resend OTP. Please try again.', 'error');
+      const parsed = parseApiError(err, 'Could not resend OTP. Please try again.');
+      showToast(parsed.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -101,16 +115,27 @@ const ForgotPassword = () => {
   // Step 3: Submit New Password
   const handleResetPassword = async (e) => {
     e.preventDefault();
+    setFieldErrors({});
+
     if (!newPassword || !confirmPassword) {
-      showToast('Please fill out both password fields.', 'error');
+      const msg = 'Please fill out both password fields.';
+      setFieldErrors({
+        new_password: !newPassword ? 'New password is required.' : '',
+        confirm_password: !confirmPassword ? 'Please confirm your new password.' : '',
+      });
+      showToast(msg, 'error');
       return;
     }
     if (newPassword.length < 8) {
-      showToast('Password must be at least 8 characters long.', 'error');
+      const msg = 'Password must be at least 8 characters long.';
+      setFieldErrors({ new_password: msg });
+      showToast(msg, 'error');
       return;
     }
     if (newPassword !== confirmPassword) {
-      showToast('Passwords do not match. Please verify.', 'error');
+      const msg = 'Passwords do not match. Please verify.';
+      setFieldErrors({ confirm_password: msg });
+      showToast(msg, 'error');
       return;
     }
 
@@ -126,8 +151,9 @@ const ForgotPassword = () => {
       showToast(res.data.message || '🎉 Password reset successfully!', 'success');
       setStep(4); // Success screen
     } catch (err) {
-      const errMsg = err.response?.data?.error || 'Failed to reset password. Please request a new OTP.';
-      showToast(errMsg, 'error');
+      const parsed = parseApiError(err, 'Failed to reset password. Please request a new OTP.');
+      setFieldErrors(parsed.fieldErrors);
+      showToast(parsed.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -208,11 +234,19 @@ const ForgotPassword = () => {
                   type="text"
                   required
                   value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
+                  onChange={(e) => {
+                    setIdentifier(e.target.value);
+                    if (fieldErrors.identifier) setFieldErrors((prev) => ({ ...prev, identifier: '' }));
+                  }}
                   placeholder="Enter your username or registered email"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-rose-600 focus:bg-white transition-all outline-none focus:ring-2 focus:ring-rose-500/20"
+                  className={`w-full pl-10 pr-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white transition-all outline-none ${
+                    fieldErrors.identifier
+                      ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                      : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
+                  }`}
                 />
               </div>
+              <FieldError error={fieldErrors.identifier} />
             </div>
 
             <button
@@ -269,11 +303,19 @@ const ForgotPassword = () => {
                   required
                   maxLength={6}
                   value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
+                  onChange={(e) => {
+                    setOtp(e.target.value.replace(/[^0-9]/g, ''));
+                    if (fieldErrors.otp) setFieldErrors((prev) => ({ ...prev, otp: '' }));
+                  }}
                   placeholder="123456"
-                  className="w-full py-3.5 bg-slate-50 border border-slate-300 rounded-xl text-center text-xl font-black font-mono tracking-widest text-slate-900 placeholder-slate-300 focus:border-rose-600 focus:bg-white transition-all outline-none focus:ring-2 focus:ring-rose-500/20"
+                  className={`w-full py-3.5 bg-slate-50 border rounded-xl text-center text-xl font-black font-mono tracking-widest text-slate-900 placeholder-slate-300 focus:bg-white transition-all outline-none ${
+                    fieldErrors.otp
+                      ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                      : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
+                  }`}
                 />
               </div>
+              <FieldError error={fieldErrors.otp} className="justify-center" />
             </div>
 
             <div className="flex items-center justify-between text-xs font-bold pt-1">
@@ -338,9 +380,18 @@ const ForgotPassword = () => {
                   type={showNewPassword ? 'text' : 'password'}
                   required
                   value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
+                  onChange={(e) => {
+                    setNewPassword(e.target.value);
+                    if (fieldErrors.new_password || fieldErrors.password) {
+                      setFieldErrors((prev) => ({ ...prev, new_password: '', password: '' }));
+                    }
+                  }}
                   placeholder="At least 8 characters"
-                  className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-rose-600 focus:bg-white transition-all outline-none focus:ring-2 focus:ring-rose-500/20"
+                  className={`w-full pl-10 pr-10 py-3 bg-slate-50 border rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white transition-all outline-none ${
+                    fieldErrors.new_password || fieldErrors.password
+                      ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                      : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
+                  }`}
                 />
                 <button
                   type="button"
@@ -350,6 +401,7 @@ const ForgotPassword = () => {
                   {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              <FieldError error={fieldErrors.new_password || fieldErrors.password} />
             </div>
 
             {/* Confirm Password */}
@@ -365,9 +417,18 @@ const ForgotPassword = () => {
                   type={showConfirmPassword ? 'text' : 'password'}
                   required
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    if (fieldErrors.confirm_password) {
+                      setFieldErrors((prev) => ({ ...prev, confirm_password: '' }));
+                    }
+                  }}
                   placeholder="Re-enter new password"
-                  className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-rose-600 focus:bg-white transition-all outline-none focus:ring-2 focus:ring-rose-500/20"
+                  className={`w-full pl-10 pr-10 py-3 bg-slate-50 border rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white transition-all outline-none ${
+                    fieldErrors.confirm_password
+                      ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                      : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
+                  }`}
                 />
                 <button
                   type="button"
@@ -377,6 +438,7 @@ const ForgotPassword = () => {
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              <FieldError error={fieldErrors.confirm_password} />
             </div>
 
             {/* Validation Tips */}

@@ -267,7 +267,7 @@ const BecomeHost = () => {
     try {
       const res = await api.get(`/users/check-email/?email=${encodeURIComponent(formData.email.trim())}`);
       if (res.data.exists) {
-        const msg = 'This email address is already registered (as Admin, Hotel Owner, or Guest). The same email cannot be used for multiple roles.';
+        const msg = 'An account with this email address already exists. Please login or use another email.';
         setEmailError(msg);
         showToast(msg, 'error');
         setCheckingEmail(false);
@@ -276,8 +276,8 @@ const BecomeHost = () => {
 
       const phoneRes = await api.get(`/users/check-phone/?phone=${encodeURIComponent(formData.phone_number.trim())}`);
       if (phoneRes.data.exists) {
-        const msg = 'This mobile number is already registered (as Admin, Hotel Owner, or Guest). The same mobile number cannot be used for multiple roles.';
-        setPhoneError('This mobile number is already registered.');
+        const msg = 'An account with this mobile number already exists. Please use another number.';
+        setPhoneError(msg);
         showToast(msg, 'error');
         setCheckingEmail(false);
         return; // DO NOT PROCEED TO STEP 2
@@ -465,11 +465,12 @@ const BecomeHost = () => {
       }
     } else if (formData.payout_method === 'UPI') {
       if (!formData.upi_id || !formData.upi_id.trim()) {
-        showToast('Please enter your valid UPI ID (e.g. name@okhdfcbank).', 'error');
+        showToast('Please enter your valid UPI ID.', 'error');
         return;
       }
-      if (!formData.upi_id.includes('@')) {
-        showToast('Invalid UPI ID format. It must contain @ (e.g. name@upi).', 'error');
+      const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+      if (!upiRegex.test(formData.upi_id.trim())) {
+        showToast('Invalid UPI ID. Please enter a valid UPI ID.', 'error');
         return;
       }
     } else {
@@ -540,7 +541,7 @@ const BecomeHost = () => {
   };
 
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen py-10 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
       <div className="max-w-4xl mx-auto space-y-8">
         
         {/* Top Header & Progress Stepper */}
@@ -1033,7 +1034,7 @@ const BecomeHost = () => {
                   <button
                     type="button"
                     onClick={() => setStep(1)}
-                    className="text-xs font-extrabold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-4 py-2.5 rounded-xl hover:bg-slate-100 cursor-pointer"
+                    className="btn-secondary text-xs font-extrabold flex items-center gap-1.5 px-4 py-2.5 rounded-full cursor-pointer"
                   >
                     <ArrowLeft className="w-4 h-4" /> Back to Step 1
                   </button>
@@ -1353,7 +1354,7 @@ const BecomeHost = () => {
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="text-xs font-extrabold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-4 py-2 rounded-xl hover:bg-slate-100"
+                  className="btn-secondary text-xs font-extrabold flex items-center gap-1.5 px-4 py-2 rounded-full cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" /> Back to Plans
                 </button>

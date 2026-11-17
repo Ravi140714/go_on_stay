@@ -5,7 +5,8 @@ import {
   MapPin, Star, Edit, Trash2, Image, Layers, Sparkles, ChevronRight, Wallet, CheckCircle2,
   Clock, User, Check, X, ShieldAlert, DoorClosed, Menu, CreditCard, Settings, Save, Landmark, Bell, Lock, ShieldCheck,
   TrendingUp, BarChart3, PieChart, ArrowUpRight, ArrowDownRight, Percent, Award, Calendar as CalendarIcon,
-  Eye, Phone, Mail, FileText, Search, ExternalLink, RotateCcw, MessageSquare, CornerDownRight
+  Eye, Phone, Mail, FileText, Search, ExternalLink, RotateCcw, MessageSquare, CornerDownRight,
+  UserX, Download
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -13,6 +14,7 @@ import { formatDisplayDate } from '../../utils/dateUtils';
 import Sidebar from '../../components/Sidebar';
 import NotificationBell from '../../components/NotificationBell';
 import Pagination from '../../components/Pagination';
+import OwnerSupportTickets from '../../components/OwnerSupportTickets';
 
 const TAB_TO_SLUG = {
   PROPERTIES: 'properties',
@@ -21,6 +23,7 @@ const TAB_TO_SLUG = {
   BOOKED_ROOMS: 'reservations',
   ROOM_OCCUPANCY: 'rooms',
   REVIEWS: 'reviews',
+  TICKETS: 'tickets',
   SETTINGS: 'profile',
   SETTING_PROFILE: 'profile',
   SETTING_PAYOUT: 'payout',
@@ -41,6 +44,8 @@ const SLUG_TO_TAB = {
   occupancy: 'ROOM_OCCUPANCY',
   reviews: 'REVIEWS',
   ratings: 'REVIEWS',
+  tickets: 'TICKETS',
+  support: 'TICKETS',
   profile: 'SETTING_PROFILE',
   settings: 'SETTING_PROFILE',
   payout: 'SETTING_PAYOUT',
@@ -184,7 +189,20 @@ const OwnerDashboard = () => {
         api.get('/payments/payout-account/'),
         api.get('/reviews/?owner=true')
       ]);
-      if (hotelsRes.status === 'fulfilled') setHotels(hotelsRes.value.data.results || hotelsRes.value.data);
+      if (hotelsRes.status === 'fulfilled') {
+        const rawHotels = hotelsRes.value.data.results || hotelsRes.value.data || [];
+        const hotelsWithRooms = await Promise.all(rawHotels.map(async (h) => {
+          if (Array.isArray(h.rooms) && h.rooms.length > 0) return h;
+          try {
+            const rRes = await api.get(`/rooms/by-hotel/${h.id}/`);
+            const rList = rRes.data.results || rRes.data || [];
+            return { ...h, rooms: rList };
+          } catch (e) {
+            return h;
+          }
+        }));
+        setHotels(hotelsWithRooms);
+      }
       if (bookingsRes.status === 'fulfilled') setBookings(bookingsRes.value.data.results || bookingsRes.value.data);
       if (settlementsRes.status === 'fulfilled') setSettlementData(settlementsRes.value.data || { summary: {}, results: [] });
       if (reviewsRes.status === 'fulfilled') setReviews(reviewsRes.value.data.results || reviewsRes.value.data || []);
@@ -349,6 +367,57 @@ const OwnerDashboard = () => {
     if (oStatus === 'APPROVED' || bStatus === 'OWNER_APPROVED' || cStatus === 'OWNER_APPROVED' || b.cancellation_breakdown?.owner_approval?.status === 'APPROVED') return 'APPROVED';
     if (oStatus === 'REJECTED' || bStatus === 'OWNER_REJECTED' || cStatus === 'OWNER_REJECTED' || b.cancellation_breakdown?.owner_approval?.status === 'REJECTED') return 'REJECTED';
     return 'PENDING';
+  };
+
+  const [markingNoShowId, setMarkingNoShowId] = useState(null);
+  const [downloadingStatement, setDownloadingStatement] = useState(false);
+
+  const handleMarkNoShow = async (booking) => {
+    const bId = booking.booking_id || booking.id;
+    if (!window.confirm(`⚠️ Confirm Guest No-Show for Booking #${bId}?\n\nGuest: ${booking.guest_name || booking.customer_name || 'Guest'}\nCheck-in Date: ${formatDisplayDate(booking.check_in)}\n\nMarking this booking as NO_SHOW indicates the guest failed to arrive for their reservation and releases the room.`)) {
+      return;
+    }
+
+    setMarkingNoShowId(booking.id);
+    try {
+      const res = await api.post(`/bookings/${booking.id}/no-show/`);
+      showToast(res.data?.message || `Booking #${bId} marked as No-Show.`, 'success');
+      setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, booking_status: 'NO_SHOW', status: 'NO_SHOW' } : b));
+      if (selectedBookingForDetails && selectedBookingForDetails.id === booking.id) {
+        setSelectedBookingForDetails(prev => ({ ...prev, booking_status: 'NO_SHOW', status: 'NO_SHOW' }));
+      }
+    } catch (err) {
+      console.error('Failed to mark booking as no-show:', err);
+      const msg = err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to mark as No-Show.';
+      showToast(msg, 'error');
+    } finally {
+      setMarkingNoShowId(null);
+      await fetchOwnerData();
+    }
+  };
+
+  const handleDownloadStatementPdf = async () => {
+    setDownloadingStatement(true);
+    try {
+      const res = await api.get('/payments/settlement-statement/?download=pdf', {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `GoOnStay_Settlement_Statement_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      showToast('Settlement statement PDF downloaded successfully!', 'success');
+    } catch (err) {
+      console.error('Failed to download settlement statement PDF:', err);
+      showToast('Failed to download settlement statement PDF.', 'error');
+    } finally {
+      setDownloadingStatement(false);
+    }
   };
 
   const handleOwnerApproveCancellation = async (booking) => {
@@ -641,6 +710,8 @@ const OwnerDashboard = () => {
     : Math.max(0, payableGrossRevenue - payablePlatformFee);
 
   const filteredBookings = bookings.filter((b) => {
+    if (b.booking_status === 'PENDING_PAYMENT' && b.payment_status === 'PENDING') return false;
+
     if (selectedHotelFilter !== 'ALL') {
       const matchHotel = b.hotel?.toString() === selectedHotelFilter.toString() || b.hotel_details?.id?.toString() === selectedHotelFilter.toString();
       if (!matchHotel) return false;
@@ -759,6 +830,7 @@ const OwnerDashboard = () => {
         { id: 'BOOKED_ROOMS', label: 'Guest Reservations', icon: CalendarCheck, badge: bookings.length },
         { id: 'ROOM_OCCUPANCY', label: 'Room Unit Status Matrix', icon: DoorClosed, badge: totalRooms },
         { id: 'REVIEWS', label: 'Guest Ratings & Reviews', icon: Star, badge: reviews.length },
+        { id: 'TICKETS', label: 'Support Tickets', icon: MessageSquare, badge: 'Support' },
       ]
     },
     {
@@ -800,7 +872,7 @@ const OwnerDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex font-sans">
+    <div className="min-h-screen bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900 flex font-sans">
       
       {/* Sidebar with Sub-Menus */}
       <Sidebar
@@ -816,24 +888,29 @@ const OwnerDashboard = () => {
       />
 
       {/* Main Right Content Panel */}
-      <div className="flex-1 min-w-0 flex flex-col min-h-screen py-6 px-4 sm:px-6 lg:px-8 space-y-8 overflow-y-auto">
+      <div className="flex-1 min-w-0 flex flex-col py-6 px-4 sm:px-6 lg:px-8 space-y-8">
         
-        {/* Header Title Bar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
+        {/* Header Title Bar with Pastel Blue / Light Sky Blue */}
+        <div className="bg-[#F0F9FF] border border-[#E0F2FE] p-6 rounded-3xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-bold uppercase tracking-wider mb-1">
-                <Building2 className="w-3.5 h-3.5 text-red-600" /> Hotel Partner Portal
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#E2E8F0] text-[#0284C7] text-xs font-bold uppercase tracking-wider mb-1.5 shadow-2xs">
+                <Building2 className="w-3.5 h-3.5 text-[#0284C7]" /> Hotel Partner Portal
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Hotel Owner Dashboard</h1>
-              <p className="text-xs text-slate-500 font-semibold">Manage your properties, live reserved room numbers, host earnings, and guest bookings</p>
+              <h1 className="text-2xl sm:text-3xl font-black text-[#0F172A] tracking-tight">Hotel Owner Dashboard</h1>
+              <p className="text-xs text-[#64748B] font-semibold">Manage your properties, live reserved room numbers, host earnings, and guest bookings</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <NotificationBell />
-            <Link to="/owner/hotels/new" className="bg-red-600 hover:bg-red-700 text-white font-black text-xs py-3 px-5 rounded-xl shadow-sm shadow-red-600/20 inline-flex items-center justify-center gap-1.5 transition-all whitespace-nowrap shrink-0 leading-none">
-              <Plus className="w-4 h-4 stroke-[3] shrink-0" /> Add New Hotel
+            <Link
+              to="/owner/hotels/new"
+              style={{ color: '#ffffff' }}
+              className="bg-[#0284C7] hover:bg-[#0369A1] text-white !text-white font-black text-xs py-3 px-5 rounded-full shadow-[0_4px_12px_rgba(2,132,199,0.25)] inline-flex items-center justify-center gap-1.5 transition-all whitespace-nowrap shrink-0 leading-none"
+            >
+              <Plus className="w-4 h-4 stroke-[3] text-white shrink-0" />
+              <span className="text-white !text-white font-black" style={{ color: '#ffffff' }}>Add New Hotel</span>
             </Link>
           </div>
         </div>
@@ -843,137 +920,62 @@ const OwnerDashboard = () => {
           <div 
             onClick={() => handleSelectTab('PROPERTIES')}
             className={`card-white p-6 flex items-center gap-4 border shadow-xs cursor-pointer transition-all hover:scale-[1.01] hover:shadow-md ${
-              activeTab === 'PROPERTIES' ? 'border-red-500 ring-2 ring-red-500/20' : 'border-slate-200 hover:border-slate-300'
+              activeTab === 'PROPERTIES' ? 'border-[#0284C7] ring-2 ring-[#0284C7]/20' : 'border-[#E2E8F0] hover:border-slate-300'
             }`}
           >
-            <div className="w-14 h-14 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
+            <div className="w-14 h-14 rounded-2xl bg-[#F0F9FF] border border-[#E0F2FE] flex items-center justify-center text-[#0284C7] shrink-0">
               <Building2 className="w-7 h-7" />
             </div>
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Listed Properties</p>
-              <h3 className="text-2xl font-black text-slate-900">{hotels.length} Hotels</h3>
+              <p className="text-xs font-extrabold uppercase tracking-wider text-[#64748B]">Listed Properties</p>
+              <h3 className="text-2xl font-black text-[#0F172A]">{hotels.length} Hotels</h3>
             </div>
           </div>
 
           <div 
             onClick={() => handleSelectTab('ROOM_OCCUPANCY')}
             className={`card-white p-6 flex items-center gap-4 border shadow-xs cursor-pointer transition-all hover:scale-[1.01] hover:shadow-md ${
-              activeTab === 'ROOM_OCCUPANCY' ? 'border-red-500 ring-2 ring-red-500/20' : 'border-slate-200 hover:border-slate-300'
+              activeTab === 'ROOM_OCCUPANCY' ? 'border-[#0284C7] ring-2 ring-[#0284C7]/20' : 'border-[#E2E8F0] hover:border-slate-300'
             }`}
           >
-            <div className="w-14 h-14 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
+            <div className="w-14 h-14 rounded-2xl bg-[#F0F9FF] border border-[#E0F2FE] flex items-center justify-center text-[#0284C7] shrink-0">
               <BedDouble className="w-7 h-7" />
             </div>
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Active Room Categories</p>
-              <h3 className="text-2xl font-black text-slate-900">{totalRooms} Categories</h3>
+              <p className="text-xs font-extrabold uppercase tracking-wider text-[#64748B]">Active Room Categories</p>
+              <h3 className="text-2xl font-black text-[#0F172A]">{totalRooms} Categories</h3>
             </div>
           </div>
 
           <div 
             onClick={() => handleSelectTab('BOOKED_ROOMS')}
             className={`card-white p-6 flex items-center gap-4 border shadow-xs cursor-pointer transition-all hover:scale-[1.01] hover:shadow-md ${
-              activeTab === 'BOOKED_ROOMS' ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-200 hover:border-slate-300'
+              activeTab === 'BOOKED_ROOMS' ? 'border-[#0284C7] ring-2 ring-[#0284C7]/20' : 'border-[#E2E8F0] hover:border-slate-300'
             }`}
           >
-            <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
+            <div className="w-14 h-14 rounded-2xl bg-[#F0F9FF] border border-[#E0F2FE] flex items-center justify-center text-[#0284C7] shrink-0">
               <CalendarCheck className="w-7 h-7" />
             </div>
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Total Booked Reservations</p>
-              <h3 className="text-2xl font-black text-rose-600">{confirmedBookings.length} Booked Rooms</h3>
+              <p className="text-xs font-extrabold uppercase tracking-wider text-[#64748B]">Total Booked Reservations</p>
+              <h3 className="text-2xl font-black text-[#0284C7]">{confirmedBookings.length} Booked Rooms</h3>
             </div>
           </div>
 
           <div 
             onClick={() => handleSelectTab('SETTLEMENTS')}
             className={`card-white p-6 flex items-center gap-4 border shadow-xs cursor-pointer transition-all hover:scale-[1.01] hover:shadow-md ${
-              activeTab === 'SETTLEMENTS' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:border-slate-300'
+              activeTab === 'SETTLEMENTS' ? 'border-[#0284C7] ring-2 ring-[#0284C7]/20' : 'border-[#E2E8F0] hover:border-slate-300'
             }`}
           >
-            <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
+            <div className="w-14 h-14 rounded-2xl bg-[#F0F9FF] border border-[#E0F2FE] flex items-center justify-center text-[#0284C7] shrink-0">
               <Wallet className="w-7 h-7" />
             </div>
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Net Host Earnings</p>
-              <h3 className="text-2xl font-black text-emerald-600">₹{netEarnings.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</h3>
+              <p className="text-xs font-extrabold uppercase tracking-wider text-[#64748B]">Net Host Earnings</p>
+              <h3 className="text-2xl font-black text-[#0F172A]">₹{netEarnings.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</h3>
             </div>
           </div>
-        </div>
-
-        {/* Quick Tab Switcher */}
-        <div className="flex items-center gap-2 border-b border-slate-200 pb-3 overflow-x-auto custom-scrollbar">
-          <button
-            type="button"
-            onClick={() => handleSelectTab('PROPERTIES')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'PROPERTIES'
-                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            <Building2 className="w-4 h-4" /> Properties ({hotels.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSelectTab('SETTLEMENTS')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'SETTLEMENTS'
-                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            <Wallet className="w-4 h-4" /> 💰 Settlement & Escrow ({settlementData.results?.length || 0})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSelectTab('ANALYTICS')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'ANALYTICS'
-                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            <TrendingUp className="w-4 h-4" /> 📊 Revenue & Analytics
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSelectTab('BOOKED_ROOMS')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'BOOKED_ROOMS'
-                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            <CalendarCheck className="w-4 h-4" /> Guest Reservations ({bookings.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSelectTab('ROOM_OCCUPANCY')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'ROOM_OCCUPANCY'
-                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            <DoorClosed className="w-4 h-4" /> Room Status Matrix ({totalRooms})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSelectTab('REVIEWS')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'REVIEWS'
-                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            <Star className="w-4 h-4 fill-amber-400 text-amber-500" /> ⭐ Guest Reviews ({reviews.length})
-          </button>
         </div>
 
         {/* Tab Content 1: Hotel Properties */}
@@ -996,8 +998,13 @@ const OwnerDashboard = () => {
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
                   You haven't listed any hotel property yet. Click below to add your first hotel and start receiving room reservations!
                 </p>
-                <Link to="/owner/hotels/new" className="btn-teal py-2.5 px-6 text-xs font-bold inline-flex items-center justify-center gap-1.5 leading-none">
-                  <Plus className="w-4 h-4 shrink-0" /> Add Your First Hotel
+                <Link
+                  to="/owner/hotels/new"
+                  style={{ color: '#ffffff' }}
+                  className="bg-[#0284C7] hover:bg-[#0369A1] text-white !text-white font-black text-xs py-2.5 px-6 rounded-full shadow-[0_4px_12px_rgba(2,132,199,0.25)] inline-flex items-center justify-center gap-1.5 transition-all whitespace-nowrap leading-none"
+                >
+                  <Plus className="w-4 h-4 stroke-[3] text-white shrink-0" />
+                  <span className="text-white !text-white font-black" style={{ color: '#ffffff' }}>Add Your First Hotel</span>
                 </Link>
               </div>
             ) : (
@@ -1065,7 +1072,7 @@ const OwnerDashboard = () => {
                       <button
                         type="button"
                         onClick={() => setSelectedHotelForBookings(hotel)}
-                        className="py-2.5 px-2 rounded-xl bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 text-[11px] font-extrabold transition-all inline-flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap leading-none shadow-2xs"
+                        className="py-2.5 px-2 rounded-xl bg-[#eaf3f9] hover:bg-sky-600 text-sky-600 hover:text-white border border-sky-200 hover:border-sky-600 text-[11px] font-extrabold transition-all inline-flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap leading-none shadow-2xs"
                         title="View Guest Bookings"
                       >
                         <User className="w-3.5 h-3.5 shrink-0" />
@@ -1075,7 +1082,7 @@ const OwnerDashboard = () => {
                       <div className="flex items-center gap-1">
                         <Link
                           to={`/owner/hotels/${hotel.id}/edit`}
-                          className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-red-600 hover:border-red-600 transition-colors flex-1 inline-flex items-center justify-center text-center font-bold text-xs shrink-0 leading-none min-h-[36px]"
+                          className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-sky-600 hover:border-sky-600 transition-colors flex-1 inline-flex items-center justify-center text-center font-bold text-xs shrink-0 leading-none min-h-[36px]"
                           title="Edit Hotel"
                         >
                           Edit
@@ -1147,25 +1154,37 @@ const OwnerDashboard = () => {
                       Centralized gateway collection • 7-day holding period post check-out protects against chargebacks & disputes
                     </p>
                   </div>
-                  {payoutAccount?.is_verified ? (
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <button
                       type="button"
-                      onClick={() => setShowPayoutModal(true)}
-                      className="px-3.5 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black flex items-center gap-1.5 shadow-2xs hover:bg-emerald-100 transition-colors cursor-pointer"
+                      onClick={handleDownloadStatementPdf}
+                      disabled={downloadingStatement}
+                      className="px-3.5 py-1.5 rounded-full bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 text-xs font-black flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                      title="Download Official Settlement Statement PDF"
                     >
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>{payoutAccount.destination_summary}</span>
+                      <Download className="w-3.5 h-3.5 text-sky-600" />
+                      <span>{downloadingStatement ? 'Generating PDF...' : 'Download Statement PDF'}</span>
                     </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowPayoutModal(true)}
-                      className="px-3.5 py-1.5 rounded-full bg-amber-50 text-amber-900 border border-amber-300 text-xs font-black flex items-center gap-1.5 shadow-2xs hover:bg-amber-100 transition-colors cursor-pointer"
-                    >
-                      <Landmark className="w-4 h-4 text-amber-600" />
-                      <span>⚠️ Register Payout Destination</span>
-                    </button>
-                  )}
+                    {payoutAccount?.is_verified ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowPayoutModal(true)}
+                        className="px-3.5 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black flex items-center gap-1.5 shadow-2xs hover:bg-emerald-100 transition-colors cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>{payoutAccount.destination_summary}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowPayoutModal(true)}
+                        className="px-3.5 py-1.5 rounded-full bg-amber-50 text-amber-900 border border-amber-300 text-xs font-black flex items-center gap-1.5 shadow-2xs hover:bg-amber-100 transition-colors cursor-pointer"
+                      >
+                        <Landmark className="w-4 h-4 text-amber-600" />
+                        <span>⚠️ Register Payout Destination</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
@@ -1203,7 +1222,7 @@ const OwnerDashboard = () => {
                 <button
                   type="button"
                   onClick={() => setShowPayoutModal(true)}
-                  className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black transition-all flex items-center gap-2 shadow-sm shadow-red-600/30 shrink-0 cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-black transition-all flex items-center gap-2 shadow-sm shadow-sky-600/25 shrink-0 cursor-pointer"
                 >
                   <Landmark className="w-4 h-4 stroke-[2.5]" />
                   <span>{payoutAccount ? 'Manage Bank / UPI' : 'Register Payout Destination'}</span>
@@ -1317,10 +1336,10 @@ const OwnerDashboard = () => {
                   <button
                     type="button"
                     onClick={() => setSettlementFilter('ALL')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all shrink-0 cursor-pointer ${
                       settlementFilter === 'ALL'
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                        : 'bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#0F172A] hover:bg-slate-50'
                     }`}
                   >
                     All ({rawItems.length})
@@ -1328,10 +1347,10 @@ const OwnerDashboard = () => {
                   <button
                     type="button"
                     onClick={() => setSettlementFilter('ON_HOLD')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all shrink-0 cursor-pointer ${
                       settlementFilter === 'ON_HOLD'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+                        ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                        : 'bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#0F172A] hover:bg-slate-50'
                     }`}
                   >
                     ⏳ 7-Day Hold ({onHoldCount})
@@ -1339,10 +1358,10 @@ const OwnerDashboard = () => {
                   <button
                     type="button"
                     onClick={() => setSettlementFilter('ELIGIBLE')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all shrink-0 cursor-pointer ${
                       settlementFilter === 'ELIGIBLE'
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                        ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                        : 'bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#0F172A] hover:bg-slate-50'
                     }`}
                   >
                     ✅ Eligible ({eligibleCount})
@@ -1350,10 +1369,10 @@ const OwnerDashboard = () => {
                   <button
                     type="button"
                     onClick={() => setSettlementFilter('DISPUTED')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all shrink-0 cursor-pointer ${
                       settlementFilter === 'DISPUTED'
-                        ? 'bg-rose-600 text-white'
-                        : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+                        ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                        : 'bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#0F172A] hover:bg-slate-50'
                     }`}
                   >
                     ⚠️ Disputed ({disputedCount})
@@ -1361,10 +1380,10 @@ const OwnerDashboard = () => {
                   <button
                     type="button"
                     onClick={() => setSettlementFilter('PAID')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all shrink-0 cursor-pointer ${
                       settlementFilter === 'PAID'
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                        : 'bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#0F172A] hover:bg-slate-50'
                     }`}
                   >
                     🎉 Disbursed ({paidCount})
@@ -1378,7 +1397,7 @@ const OwnerDashboard = () => {
                     placeholder="Search booking ID, hotel, guest..."
                     value={settlementSearch}
                     onChange={(e) => setSettlementSearch(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-red-600 focus:bg-white"
+                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-sky-600 focus:bg-white"
                   />
                 </div>
               </div>
@@ -1518,7 +1537,7 @@ const OwnerDashboard = () => {
                                 <button
                                   type="button"
                                   onClick={() => setSelectedStatement(earning)}
-                                  className="py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 border border-slate-200 text-xs font-black transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                  className="py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-[#eaf3f9] text-slate-700 hover:text-sky-800 border border-slate-200 text-xs font-black transition-colors inline-flex items-center gap-1 cursor-pointer"
                                 >
                                   <FileText className="w-3.5 h-3.5" /> Statement
                                 </button>
@@ -1792,14 +1811,14 @@ const OwnerDashboard = () => {
                     <div
                       key={h.id}
                       onClick={() => setSelectedHotelForBookings(h)}
-                      className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/40 hover:bg-white hover:border-red-300 hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs cursor-pointer group"
+                      className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/40 hover:bg-white hover:border-sky-300 hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs cursor-pointer group"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="w-7 h-7 rounded-xl bg-slate-200 group-hover:bg-red-50 group-hover:text-red-600 text-slate-800 font-black text-xs flex items-center justify-center shrink-0 transition-colors">
+                        <span className="w-7 h-7 rounded-xl bg-slate-200 group-hover:bg-[#eaf3f9] group-hover:text-sky-600 text-slate-800 font-black text-xs flex items-center justify-center shrink-0 transition-colors">
                           #{i + 1}
                         </span>
                         <div className="min-w-0">
-                          <h4 className="text-xs font-black text-slate-900 truncate group-hover:text-red-600 transition-colors">{h.name}</h4>
+                          <h4 className="text-xs font-black text-slate-900 truncate group-hover:text-sky-600 transition-colors">{h.name}</h4>
                           <p className="text-[11px] text-slate-500 font-semibold">{h.city} • {h.star_rating}★</p>
                         </div>
                       </div>
@@ -1823,7 +1842,7 @@ const OwnerDashboard = () => {
                             e.stopPropagation();
                             setSelectedHotelForBookings(h);
                           }}
-                          className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[11px] font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
+                          className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
                           title={`View guest bookings for ${h.name}`}
                         >
                           <Eye className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -2098,10 +2117,23 @@ const OwnerDashboard = () => {
                                 return null;
                               })()}
 
+                              {['CONFIRMED', 'PENDING_PAYMENT'].includes((b.booking_status || '').toUpperCase()) && !isCancellationBooking(b) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkNoShow(b)}
+                                  disabled={markingNoShowId === b.id}
+                                  className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white border border-amber-300 text-xs font-black transition-all inline-flex items-center gap-1 cursor-pointer"
+                                  title="Mark Guest as No-Show"
+                                >
+                                  <UserX className="w-3.5 h-3.5" />
+                                  {markingNoShowId === b.id ? '...' : 'No-Show'}
+                                </button>
+                              )}
+
                               <button
                                 type="button"
                                 onClick={() => setSelectedBookingForDetails(b)}
-                                className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 text-xs font-black transition-all inline-flex items-center gap-1 cursor-pointer"
+                                className="px-2.5 py-1.5 rounded-lg bg-[#eaf3f9] hover:bg-sky-600 text-sky-600 hover:text-white border border-sky-200 text-xs font-black transition-all inline-flex items-center gap-1 cursor-pointer"
                                 title="View Full Booking & Guest Details"
                               >
                                 <Eye className="w-3.5 h-3.5" /> View More
@@ -2282,7 +2314,7 @@ const OwnerDashboard = () => {
                     <select
                       value={selectedReviewHotelFilter}
                       onChange={(e) => setSelectedReviewHotelFilter(e.target.value)}
-                      className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-red-500"
+                      className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-sky-500"
                     >
                       <option value="ALL">All Properties ({hotels.length})</option>
                       {hotels.map((h) => (
@@ -2295,7 +2327,7 @@ const OwnerDashboard = () => {
                   <select
                     value={selectedStarFilter}
                     onChange={(e) => setSelectedStarFilter(e.target.value)}
-                    className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-red-500"
+                    className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-sky-500"
                   >
                     <option value="ALL">All Stars ({totalReviewsCount})</option>
                     <option value="5">5 Stars ({starCounts[5]})</option>
@@ -2510,7 +2542,7 @@ const OwnerDashboard = () => {
                                 value={responseText}
                                 onChange={(e) => setResponseText(e.target.value)}
                                 placeholder="Thank your guest, address their feedback, or explain improvements made..."
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium outline-none focus:border-red-500 transition-all resize-none"
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium outline-none focus:border-sky-500 transition-all resize-none"
                               />
                               <div className="flex items-center justify-end gap-2">
                                 <button
@@ -2527,7 +2559,7 @@ const OwnerDashboard = () => {
                                   type="button"
                                   disabled={submittingResponse || !responseText.trim()}
                                   onClick={() => handleSendResponse(rev.id)}
-                                  className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-xs disabled:opacity-50 transition-colors"
+                                  className="px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-xs disabled:opacity-50 transition-colors"
                                 >
                                   {submittingResponse ? 'Posting...' : 'Post Reply'}
                                 </button>
@@ -2540,7 +2572,7 @@ const OwnerDashboard = () => {
                                 setRespondingReviewId(rev.id);
                                 setResponseText('');
                               }}
-                              className="text-xs font-black text-red-600 hover:text-red-700 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-red-50 border border-transparent hover:border-red-100 transition-colors ml-4 sm:ml-8 cursor-pointer"
+                              className="text-xs font-black text-sky-600 hover:text-sky-800 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-[#eaf3f9] border border-transparent hover:border-sky-100 transition-colors ml-4 sm:ml-8 cursor-pointer"
                             >
                               <CornerDownRight className="w-3.5 h-3.5" /> Reply to Review
                             </button>
@@ -2561,6 +2593,13 @@ const OwnerDashboard = () => {
             </div>
           );
         })()}
+
+        {/* Tab Content: Support Tickets Management for Hotel Owner */}
+        {activeTab === 'TICKETS' && (
+          <div className="animate-fade-in">
+            <OwnerSupportTickets hotels={hotels} bookings={bookings} />
+          </div>
+        )}
 
         {/* Tab Content 4: Settings Group with Sub-Items */}
         {(activeTab === 'SETTINGS' || activeTab.startsWith('SETTING_')) && (
@@ -2730,7 +2769,7 @@ const OwnerDashboard = () => {
                   <button
                     type="button"
                     onClick={() => setShowPayoutModal(true)}
-                    className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-black text-xs rounded-xl shadow-md shadow-red-600/20 flex items-center gap-2 shrink-0 cursor-pointer"
+                    className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-black text-xs rounded-xl shadow-md shadow-sky-600/20 flex items-center gap-2 shrink-0 cursor-pointer"
                   >
                     <Landmark className="w-4 h-4 stroke-[2.5]" />
                     <span>{payoutAccount ? 'Update Payout Details' : 'Register Payout Destination'}</span>
@@ -2864,7 +2903,7 @@ const OwnerDashboard = () => {
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
+                <div className="w-10 h-10 rounded-2xl bg-[#eaf3f9] border border-sky-200 flex items-center justify-center text-sky-600 shrink-0">
                   <Landmark className="w-5 h-5" />
                 </div>
                 <div>
@@ -2893,7 +2932,7 @@ const OwnerDashboard = () => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Landmark className="w-4 h-4 text-red-600" /> Bank Account (NEFT/IMPS)
+                <Landmark className="w-4 h-4 text-sky-600" /> Bank Account (NEFT/IMPS)
               </button>
 
               <button
@@ -2905,7 +2944,7 @@ const OwnerDashboard = () => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Wallet className="w-4 h-4 text-red-600" /> UPI Instant Transfer
+                <Wallet className="w-4 h-4 text-sky-600" /> UPI Instant Transfer
               </button>
             </div>
 
@@ -2914,7 +2953,7 @@ const OwnerDashboard = () => {
                 <>
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1">
-                      Account Holder Name <span className="text-red-600">*</span>
+                      Account Holder Name <span className="text-sky-600">*</span>
                     </label>
                     <input
                       type="text"
@@ -2922,13 +2961,13 @@ const OwnerDashboard = () => {
                       value={payoutForm.account_holder_name}
                       onChange={(e) => setPayoutForm({ ...payoutForm, account_holder_name: e.target.value })}
                       placeholder="Name as printed in Bank Passbook"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold outline-none focus:border-red-600 focus:bg-white"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold outline-none focus:border-sky-600 focus:bg-white"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1">
-                      Bank Name <span className="text-red-600">*</span>
+                      Bank Name <span className="text-sky-600">*</span>
                     </label>
                     <input
                       type="text"
@@ -2936,14 +2975,14 @@ const OwnerDashboard = () => {
                       value={payoutForm.bank_name}
                       onChange={(e) => setPayoutForm({ ...payoutForm, bank_name: e.target.value })}
                       placeholder="e.g. HDFC Bank, State Bank of India"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold outline-none focus:border-red-600 focus:bg-white"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold outline-none focus:border-sky-600 focus:bg-white"
                     />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1">
-                        Bank Account Number <span className="text-red-600">*</span>
+                        Bank Account Number <span className="text-sky-600">*</span>
                       </label>
                       <input
                         type="password"
@@ -2951,13 +2990,13 @@ const OwnerDashboard = () => {
                         value={payoutForm.account_number}
                         onChange={(e) => setPayoutForm({ ...payoutForm, account_number: e.target.value })}
                         placeholder="Enter full account number"
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold outline-none focus:border-red-600 focus:bg-white"
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold outline-none focus:border-sky-600 focus:bg-white"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1">
-                        Confirm Account Number <span className="text-red-600">*</span>
+                        Confirm Account Number <span className="text-sky-600">*</span>
                       </label>
                       <input
                         type="text"
@@ -2965,14 +3004,14 @@ const OwnerDashboard = () => {
                         value={payoutForm.confirm_account_number}
                         onChange={(e) => setPayoutForm({ ...payoutForm, confirm_account_number: e.target.value })}
                         placeholder="Re-enter to confirm"
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold outline-none focus:border-red-600 focus:bg-white"
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold outline-none focus:border-sky-600 focus:bg-white"
                       />
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1">
-                      Bank IFSC Code <span className="text-red-600">*</span>
+                      Bank IFSC Code <span className="text-sky-600">*</span>
                     </label>
                     <input
                       type="text"
@@ -2980,7 +3019,7 @@ const OwnerDashboard = () => {
                       value={payoutForm.ifsc_code}
                       onChange={(e) => setPayoutForm({ ...payoutForm, ifsc_code: e.target.value.toUpperCase() })}
                       placeholder="e.g. HDFC0001234"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold uppercase outline-none focus:border-red-600 focus:bg-white"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold uppercase outline-none focus:border-sky-600 focus:bg-white"
                     />
                   </div>
                 </>
@@ -2988,7 +3027,7 @@ const OwnerDashboard = () => {
                 <>
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1">
-                      UPI ID (Virtual Payment Address) <span className="text-red-600">*</span>
+                      UPI ID (Virtual Payment Address) <span className="text-sky-600">*</span>
                     </label>
                     <input
                       type="text"
@@ -2996,13 +3035,13 @@ const OwnerDashboard = () => {
                       value={payoutForm.upi_id}
                       onChange={(e) => setPayoutForm({ ...payoutForm, upi_id: e.target.value.toLowerCase() })}
                       placeholder="e.g. ownername@okhdfcbank or 9876543210@paytm"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold outline-none focus:border-red-600 focus:bg-white"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold outline-none focus:border-sky-600 focus:bg-white"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1">
-                      Beneficiary Name on UPI <span className="text-red-600">*</span>
+                      Beneficiary Name on UPI <span className="text-sky-600">*</span>
                     </label>
                     <input
                       type="text"
@@ -3010,7 +3049,7 @@ const OwnerDashboard = () => {
                       value={payoutForm.account_holder_name}
                       onChange={(e) => setPayoutForm({ ...payoutForm, account_holder_name: e.target.value })}
                       placeholder="Registered account holder name"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold outline-none focus:border-red-600 focus:bg-white"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold outline-none focus:border-sky-600 focus:bg-white"
                     />
                   </div>
                 </>
@@ -3018,7 +3057,7 @@ const OwnerDashboard = () => {
 
               <div className="pt-2 border-t border-slate-100">
                 <label className="block text-xs font-black uppercase tracking-wider text-rose-950 mb-1 flex items-center gap-1">
-                  <ShieldCheck className="w-4 h-4 text-red-600" /> Enter Account Login Password <span className="text-red-600">*</span>
+                  <ShieldCheck className="w-4 h-4 text-sky-600" /> Enter Account Login Password <span className="text-sky-600">*</span>
                 </label>
                 <input
                   type="password"
@@ -3026,7 +3065,7 @@ const OwnerDashboard = () => {
                   value={payoutForm.current_password}
                   onChange={(e) => setPayoutForm({ ...payoutForm, current_password: e.target.value })}
                   placeholder="Enter your account password to authorize payout change"
-                  className="w-full px-4 py-2.5 bg-rose-50/50 border border-rose-200 rounded-xl font-bold outline-none focus:border-red-600 focus:bg-white"
+                  className="w-full px-4 py-2.5 bg-rose-50/50 border border-rose-200 rounded-xl font-bold outline-none focus:border-sky-600 focus:bg-white"
                 />
                 <p className="text-[10px] text-slate-500 font-semibold mt-1">
                   🔒 Bank and UPI details are encrypted and masked in the UI. Payouts are verified using provider APIs.
@@ -3074,7 +3113,7 @@ const OwnerDashboard = () => {
             {/* Header */}
             <div className="flex items-start justify-between border-b border-slate-100 pb-4">
               <div>
-                <span className="px-3 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-black uppercase tracking-wider">
+                <span className="px-3 py-1 rounded-full bg-[#eaf3f9] text-sky-800 border border-sky-200 text-[10px] font-black uppercase tracking-wider">
                   Book My Room Escrow Settlement Voucher
                 </span>
                 <h3 className="text-xl font-black text-slate-900 mt-1">
@@ -3097,7 +3136,7 @@ const OwnerDashboard = () => {
             {/* Financial Ledger Breakdown Table */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
               <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-red-600" /> Itemized Tariff & Commission Ledger
+                <CreditCard className="w-4 h-4 text-sky-600" /> Itemized Tariff & Commission Ledger
               </h4>
 
               <div className="space-y-2 text-slate-700">
@@ -3211,7 +3250,7 @@ const OwnerDashboard = () => {
               {/* Header */}
               <div className="flex items-start justify-between border-b border-slate-100 pb-4 gap-4 shrink-0">
                 <div className="flex items-start gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
+                  <div className="w-12 h-12 rounded-2xl bg-[#eaf3f9] border border-sky-200 flex items-center justify-center text-sky-600 shrink-0">
                     <Building2 className="w-6 h-6" />
                   </div>
                   <div>
@@ -3222,7 +3261,7 @@ const OwnerDashboard = () => {
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 font-semibold flex items-center gap-1 mt-0.5">
-                      <MapPin className="w-3.5 h-3.5 text-red-600" />
+                      <MapPin className="w-3.5 h-3.5 text-sky-600" />
                       <span>{selectedHotelForBookings.city} • Guest Reservations Directory</span>
                     </p>
                   </div>
@@ -3246,7 +3285,7 @@ const OwnerDashboard = () => {
                   <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-black">
                     Total Bookings: <span className="text-slate-900 font-extrabold">{hotelBookings.length}</span>
                   </span>
-                  <span className="px-3 py-1.5 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs font-black">
+                  <span className="px-3 py-1.5 rounded-xl bg-[#eaf3f9] text-sky-800 border border-sky-200 text-xs font-black">
                     Total Sales: <span className="font-extrabold">₹{totalRevenue.toLocaleString('en-IN')}</span>
                   </span>
                 </div>
@@ -3258,7 +3297,7 @@ const OwnerDashboard = () => {
                     value={hotelBookingSearch}
                     onChange={(e) => setHotelBookingSearch(e.target.value)}
                     placeholder="Search guest name, phone, room..."
-                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-red-600 focus:bg-white"
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-sky-600 focus:bg-white"
                   />
                 </div>
               </div>
@@ -3279,12 +3318,12 @@ const OwnerDashboard = () => {
                   hotelBookings.slice((modalBookingPage - 1) * 10, modalBookingPage * 10).map((b) => (
                     <div
                       key={b.id}
-                      className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-red-300 hover:shadow-md transition-all space-y-3"
+                      className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-sky-300 hover:shadow-md transition-all space-y-3"
                     >
                       {/* Top Row: Guest & Status */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-red-100/70 border border-red-200 text-red-700 font-black text-sm flex items-center justify-center shrink-0">
+                          <div className="w-10 h-10 rounded-full bg-sky-100/70 border border-sky-200 text-sky-800 font-black text-sm flex items-center justify-center shrink-0">
                             {(b.guest_name || b.customer_name || 'G')[0].toUpperCase()}
                           </div>
                           <div>
@@ -3294,12 +3333,12 @@ const OwnerDashboard = () => {
                             </div>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap font-semibold">
                               {b.guest_phone && (
-                                <a href={`tel:${b.guest_phone}`} className="hover:text-red-600 font-mono flex items-center gap-1">
-                                  <Phone className="w-3 h-3 text-red-600" /> {b.guest_phone}
+                                <a href={`tel:${b.guest_phone}`} className="hover:text-sky-600 font-mono flex items-center gap-1">
+                                  <Phone className="w-3 h-3 text-sky-600" /> {b.guest_phone}
                                 </a>
                               )}
                               {b.guest_email && (
-                                <a href={`mailto:${b.guest_email}`} className="hover:text-red-600 flex items-center gap-1 truncate max-w-[200px]">
+                                <a href={`mailto:${b.guest_email}`} className="hover:text-sky-600 flex items-center gap-1 truncate max-w-[200px]">
                                   <Mail className="w-3 h-3 text-slate-400" /> {b.guest_email}
                                 </a>
                               )}
@@ -3332,7 +3371,7 @@ const OwnerDashboard = () => {
                         <div>
                           <span className="text-[10px] font-bold uppercase text-slate-400 block">Room Category & Unit</span>
                           <span className="font-extrabold text-slate-900 block truncate">{b.room_details?.title || `Room #${b.room}`}</span>
-                          <span className="inline-flex items-center gap-1 font-mono font-black text-red-600 text-[11px] mt-0.5">
+                          <span className="inline-flex items-center gap-1 font-mono font-black text-sky-600 text-[11px] mt-0.5">
                             <DoorClosed className="w-3 h-3" /> Unit: {b.room_number || 'Room 101'}
                           </span>
                         </div>
@@ -3348,7 +3387,7 @@ const OwnerDashboard = () => {
                         <div className="sm:text-right flex flex-col sm:items-end justify-between gap-1">
                           <div>
                             <span className="text-[10px] font-bold uppercase text-slate-400 block">Total Amount</span>
-                            <span className="text-base font-black text-red-600">
+                            <span className="text-base font-black text-sky-600">
                               ₹{parseFloat(b.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                             </span>
                           </div>
@@ -3368,7 +3407,7 @@ const OwnerDashboard = () => {
                             <button
                               type="button"
                               onClick={() => setSelectedBookingForDetails(b)}
-                              className="text-xs font-black text-red-600 hover:text-red-700 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                              className="text-xs font-black text-sky-600 hover:text-sky-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
                             >
                               <FileText className="w-3.5 h-3.5" /> Details →
                             </button>
@@ -3434,7 +3473,7 @@ const OwnerDashboard = () => {
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-slate-100 pb-4">
               <div>
-                <span className="px-3 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-black uppercase tracking-wider">
+                <span className="px-3 py-1 rounded-full bg-[#eaf3f9] text-sky-800 border border-sky-200 text-[10px] font-black uppercase tracking-wider">
                   Official Reservation Voucher
                 </span>
                 <h3 className="text-xl font-black text-slate-900 mt-1">
@@ -3457,7 +3496,7 @@ const OwnerDashboard = () => {
             {/* Guest Contact Information Card */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
               <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                <User className="w-4 h-4 text-red-600" /> Guest Contact & Stay Information
+                <User className="w-4 h-4 text-sky-600" /> Guest Contact & Stay Information
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
@@ -3466,7 +3505,7 @@ const OwnerDashboard = () => {
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase block">Phone Contact</span>
-                  <a href={`tel:${selectedBookingForDetails.guest_phone}`} className="text-sm font-mono font-black text-red-600 hover:underline">
+                  <a href={`tel:${selectedBookingForDetails.guest_phone}`} className="text-sm font-mono font-black text-sky-600 hover:underline">
                     {selectedBookingForDetails.guest_phone || 'No phone provided'}
                   </a>
                 </div>
@@ -3488,7 +3527,7 @@ const OwnerDashboard = () => {
             {/* Property & Room Details */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
               <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-red-600" /> Hotel Property & Assigned Room Unit
+                <Building2 className="w-4 h-4 text-sky-600" /> Hotel Property & Assigned Room Unit
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
@@ -3499,7 +3538,7 @@ const OwnerDashboard = () => {
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase block">Room Category & Unit</span>
                   <span className="text-sm font-black text-teal-800">{selectedBookingForDetails.room_details?.title || 'Room Category'}</span>
-                  <span className="inline-flex items-center gap-1 font-mono font-black text-red-600 text-xs mt-0.5">
+                  <span className="inline-flex items-center gap-1 font-mono font-black text-sky-600 text-xs mt-0.5">
                     <DoorClosed className="w-3.5 h-3.5" /> Assigned Unit: {selectedBookingForDetails.room_number || 'Room 101'}
                   </span>
                 </div>
@@ -3527,7 +3566,7 @@ const OwnerDashboard = () => {
             {/* Financial Ledger & Price Breakdown */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs">
               <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2 mb-2">
-                <CreditCard className="w-4 h-4 text-red-600" /> Payment & Billing Summary
+                <CreditCard className="w-4 h-4 text-sky-600" /> Payment & Billing Summary
               </h4>
               <div className="flex justify-between text-slate-600">
                 <span>Room Rate ({selectedBookingForDetails.number_of_nights} nights):</span>
@@ -3547,7 +3586,7 @@ const OwnerDashboard = () => {
               )}
               <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-sm font-black text-slate-900">
                 <span>Total Amount Paid / Payable:</span>
-                <span className="text-lg text-red-600">₹{parseFloat(selectedBookingForDetails.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span className="text-lg text-sky-600">₹{parseFloat(selectedBookingForDetails.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
               <div className="flex items-center justify-between pt-1 text-[11px] font-semibold text-slate-500">
                 <span>Payment Status: <strong className="text-emerald-700">{selectedBookingForDetails.payment_status}</strong></span>
@@ -3713,8 +3752,21 @@ const OwnerDashboard = () => {
               </div>
             )}
 
-            {/* Close */}
-            <div className="flex justify-end pt-2 border-t border-slate-100">
+            {/* Modal Actions Footer */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <div>
+                {['CONFIRMED', 'PENDING_PAYMENT'].includes((selectedBookingForDetails.booking_status || '').toUpperCase()) && !isCancellationBooking(selectedBookingForDetails) && (
+                  <button
+                    type="button"
+                    onClick={() => handleMarkNoShow(selectedBookingForDetails)}
+                    disabled={markingNoShowId === selectedBookingForDetails.id}
+                    className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white border border-amber-300 text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                  >
+                    <UserX className="w-4 h-4" />
+                    {markingNoShowId === selectedBookingForDetails.id ? 'Marking...' : 'Mark Guest as No-Show'}
+                  </button>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedBookingForDetails(null)}

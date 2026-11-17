@@ -83,34 +83,6 @@ const getOwnerApproval = (bookingOrId) => {
   }
 };
 
-const getAdminRefund = (bookingOrId) => {
-  try {
-    const existing = JSON.parse(localStorage.getItem('bmr_admin_refunds') || '{}');
-    if (!bookingOrId) return null;
-    if (typeof bookingOrId === 'object') {
-      const keys = [
-        bookingOrId.id,
-        bookingOrId.booking_id,
-        bookingOrId.booking_reference,
-        bookingOrId.reference_id,
-        bookingOrId.booking
-      ].filter(Boolean).map(String);
-      for (const k of keys) {
-        const clean = k.replace(/^#/, '');
-        if (existing[k] || existing[clean] || existing[`#${clean}`]) {
-          return existing[k] || existing[clean] || existing[`#${clean}`];
-        }
-      }
-      return null;
-    }
-    const str = String(bookingOrId).trim();
-    const clean = str.replace(/^#/, '');
-    return existing[str] || existing[clean] || existing[`#${clean}`] || null;
-  } catch (e) {
-    return null;
-  }
-};
-
 const MyBookings = () => {
   const { user, showToast } = useAuth();
   const navigate = useNavigate();
@@ -154,19 +126,6 @@ const MyBookings = () => {
           const pStatus = (b.payment_status || '').toUpperCase();
           const rStatus = (b.refund_status || '').toUpperCase();
 
-          const localRef = getAdminRefund(b);
-          if (localRef) {
-            return {
-              ...b,
-              booking_status: 'REFUNDED',
-              status: 'REFUNDED',
-              payment_status: 'REFUNDED',
-              refund_status: 'REFUNDED',
-              refund_arn: localRef.refund_arn || b.refund_arn,
-              utr: localRef.utr || b.utr
-            };
-          }
-
           if (bStatus === 'REFUNDED' || pStatus === 'REFUNDED' || rStatus === 'REFUNDED') {
             return { ...b, booking_status: 'REFUNDED', payment_status: 'REFUNDED', refund_status: 'REFUNDED' };
           }
@@ -181,27 +140,14 @@ const MyBookings = () => {
               if (pData && (pData.payout_id || pData.status || pData.id)) {
                 const pStat = (pData.status || '').toUpperCase();
                 if (pStat === 'PROCESSED' || pStat === 'SUCCESS' || pStat === 'PROCESSING' || pStat === 'QUEUED' || pData.payout_id) {
-                  const refRecord = {
-                    status: 'REFUNDED',
-                    refund_arn: pData.payout_id || pData.id,
-                    utr: pData.utr || `UTR${Date.now().toString().slice(-8)}`,
-                    refunded_at: new Date().toISOString()
-                  };
-                  try {
-                    const localRefunds = JSON.parse(localStorage.getItem('bmr_admin_refunds') || '{}');
-                    localRefunds[String(b.id)] = refRecord;
-                    if (b.booking_id) localRefunds[String(b.booking_id).replace(/^#/, '')] = refRecord;
-                    localStorage.setItem('bmr_admin_refunds', JSON.stringify(localRefunds));
-                  } catch (e) {}
-
                   return {
                     ...b,
                     booking_status: 'REFUNDED',
                     status: 'REFUNDED',
                     payment_status: 'REFUNDED',
                     refund_status: 'REFUNDED',
-                    refund_arn: refRecord.refund_arn,
-                    utr: refRecord.utr
+                    refund_arn: pData.payout_id || pData.id || b.refund_arn,
+                    utr: pData.utr || b.utr
                   };
                 }
               }
@@ -339,7 +285,7 @@ const MyBookings = () => {
   });
 
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen py-10 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Header */}
@@ -349,15 +295,15 @@ const MyBookings = () => {
         </div>
 
         {/* Status Tabs */}
-        <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+        <div className="flex items-center gap-2 border-b border-[#E2E8F0] pb-2 overflow-x-auto">
           {['ALL', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all uppercase tracking-wider ${
+              className={`px-4 py-2 rounded-full text-xs font-black transition-all uppercase tracking-wider cursor-pointer ${
                 activeTab === tab
-                  ? 'bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-md shadow-teal-600/25'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                  : 'bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#0F172A] hover:bg-[#F8FAFC]'
               }`}
             >
               {tab === 'ALL' ? 'All Reservations' : tab}
@@ -681,7 +627,7 @@ const MyBookings = () => {
                       {canCancelBooking(b) && (
                         <button
                           onClick={() => handleOpenCancelModal(b)}
-                          className="px-4 py-2 rounded-xl border border-rose-200 text-rose-600 font-extrabold hover:bg-rose-50 transition-colors cursor-pointer"
+                          className="px-4 py-2 rounded-full border border-red-200 text-red-600 font-extrabold hover:bg-red-50 hover:border-red-400 transition-colors cursor-pointer"
                         >
                           Cancel Stay
                         </button>
@@ -779,14 +725,14 @@ const MyBookings = () => {
                 <button
                   type="button"
                   onClick={() => setRatingBooking(null)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                  className="btn-secondary px-4 py-2.5 rounded-full text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingRating}
-                  className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs shadow-md shadow-amber-500/25 flex items-center gap-2 disabled:opacity-50 transition-colors cursor-pointer"
+                  className="btn-primary px-6 py-2.5 rounded-full text-xs font-black flex items-center gap-2 cursor-pointer"
                 >
                   {submittingRating ? 'Submitting...' : 'Submit Rating'}
                 </button>
@@ -936,7 +882,7 @@ const MyBookings = () => {
               <button
                 type="button"
                 onClick={() => setCancelModalBooking(null)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="px-4 py-2.5 rounded-full border border-[#E2E8F0] font-bold text-[#475569] bg-white hover:bg-[#F8FAFC] transition-colors cursor-pointer"
               >
                 Keep Reservation
               </button>
@@ -944,7 +890,7 @@ const MyBookings = () => {
                 type="button"
                 onClick={handleConfirmCancellation}
                 disabled={cancelling || cancelLoadingQuote}
-                className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black shadow-md shadow-rose-600/25 flex items-center gap-2 disabled:opacity-50 transition-colors cursor-pointer"
+                className="btn-danger px-6 py-2.5 rounded-full flex items-center gap-2 cursor-pointer"
               >
                 {cancelling ? (
                   <>

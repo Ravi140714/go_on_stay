@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
+import { parseApiError } from '../utils/errorHandler';
+import { parseRegistrationErrors } from '../utils/registrationErrors';
 
 const AuthContext = createContext(null);
 
@@ -49,9 +51,14 @@ export const AuthProvider = ({ children }) => {
       showToast(message || 'Welcome back!');
       return { success: true, user: userData };
     } catch (err) {
-      const errMsg = err.response?.data?.error || (err.response ? 'Login failed. Please check credentials.' : 'Cannot connect to backend server. Make sure Django is running.');
-      showToast(errMsg, 'error');
-      return { success: false, error: errMsg };
+      const parsed = parseApiError(err, 'Login failed. Please check credentials.');
+      showToast(parsed.message, 'error');
+      return {
+        success: false,
+        error: parsed.message,
+        fieldErrors: parsed.fieldErrors,
+        isNetworkError: parsed.isNetworkError,
+      };
     }
   };
 
@@ -69,28 +76,18 @@ export const AuthProvider = ({ children }) => {
       showToast(message || 'Account created successfully!');
       return { success: true, user: userData };
     } catch (err) {
-      let errMsg = 'Registration failed.';
-      if (err.response?.data) {
-        const errors = err.response.data;
-        if (typeof errors === 'string') {
-          errMsg = errors;
-        } else if (typeof errors === 'object' && errors !== null) {
-          const keys = Object.keys(errors);
-          if (keys.length > 0) {
-            const val = errors[keys[0]];
-            if (Array.isArray(val)) {
-              const firstVal = val[0];
-              errMsg = `${keys[0]}: ${typeof firstVal === 'object' ? JSON.stringify(firstVal) : firstVal}`;
-            } else if (typeof val === 'object' && val !== null) {
-              errMsg = `${keys[0]}: ${JSON.stringify(val)}`;
-            } else {
-              errMsg = `${keys[0]}: ${val}`;
-            }
-          }
-        }
-      }
-      showToast(errMsg, 'error');
-      return { success: false, error: errMsg };
+      const parsed = parseRegistrationErrors(err.response?.data || err.message);
+      showToast(parsed.primaryMessage, 'error');
+      return {
+        success: false,
+        error: parsed.primaryMessage,
+        fieldErrors: parsed.fieldErrors,
+        isDuplicateUser: parsed.isDuplicateUser,
+        isDuplicateEmail: parsed.isDuplicateEmail,
+        isDuplicatePhone: parsed.isDuplicatePhone,
+        isDuplicateUsername: parsed.isDuplicateUsername,
+        rawErrors: err.response?.data,
+      };
     }
   };
 
@@ -146,35 +143,18 @@ export const AuthProvider = ({ children }) => {
       showToast(message || 'Host account registered successfully!', 'success');
       return { success: true, user: userData, data: res.data };
     } catch (err) {
-      let errMsg = 'Failed to register as host.';
-      if (err.response?.data) {
-        const errors = err.response.data;
-        if (typeof errors === 'string') {
-          if (errors.includes('<html') || errors.includes('<!DOCTYPE')) {
-            errMsg = `Backend endpoint error (${err.response?.status || 500}): Route not found in Django URLs.`;
-          } else {
-            errMsg = errors;
-          }
-        } else if (errors.error) {
-          errMsg = errors.error;
-        } else if (errors.detail) {
-          errMsg = errors.detail;
-        } else if (typeof errors === 'object' && errors !== null) {
-          const keys = Object.keys(errors);
-          if (keys.length > 0) {
-            const val = errors[keys[0]];
-            if (Array.isArray(val)) {
-              errMsg = `${keys[0]}: ${typeof val[0] === 'object' ? JSON.stringify(val[0]) : val[0]}`;
-            } else if (typeof val === 'object' && val !== null) {
-              errMsg = `${keys[0]}: ${JSON.stringify(val)}`;
-            } else {
-              errMsg = `${keys[0]}: ${val}`;
-            }
-          }
-        }
-      }
-      showToast(errMsg, 'error');
-      return { success: false, error: errMsg };
+      const parsed = parseRegistrationErrors(err.response?.data || err.message);
+      showToast(parsed.primaryMessage, 'error');
+      return {
+        success: false,
+        error: parsed.primaryMessage,
+        fieldErrors: parsed.fieldErrors,
+        isDuplicateUser: parsed.isDuplicateUser,
+        isDuplicateEmail: parsed.isDuplicateEmail,
+        isDuplicatePhone: parsed.isDuplicatePhone,
+        isDuplicateUsername: parsed.isDuplicateUsername,
+        rawErrors: err.response?.data,
+      };
     }
   };
 
@@ -189,16 +169,51 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (data) => {
     try {
-      const res = await api.put('/users/profile/', data, {
-        headers: data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {},
-      });
+      const storedUser = user || JSON.parse(localStorage.getItem('user') || '{}');
+      const currentUserEmail = storedUser?.email;
+
+      let payload = data;
+      // If payload is FormData, ensure email is included if missing
+      if (payload instanceof FormData) {
+        if (!payload.has('email') && currentUserEmail) {
+          payload.append('email', currentUserEmail);
+        }
+      } else if (payload && typeof payload === 'object') {
+        if (!payload.email && currentUserEmail) {
+          payload = { ...payload, email: currentUserEmail };
+        }
+      }
+
+      const isFormData = payload instanceof FormData;
+      // Try PATCH first for partial update, fallback to PUT
+      let res;
+      try {
+        res = await api.patch('/users/profile/', payload, {
+          headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : {},
+        });
+      } catch (patchErr) {
+        if (patchErr.response?.status === 405) {
+          res = await api.put('/users/profile/', payload, {
+            headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : {},
+          });
+        } else {
+          throw patchErr;
+        }
+      }
+
       setUser(res.data);
       localStorage.setItem('user', JSON.stringify(res.data));
       showToast('Profile updated successfully!');
       return { success: true, user: res.data };
     } catch (err) {
-      showToast('Failed to update profile.', 'error');
-      return { success: false, error: err };
+      const errorParsed = parseApiError(err, 'Failed to update profile.');
+      showToast(errorParsed.message, 'error');
+      return {
+        success: false,
+        error: err,
+        fieldErrors: errorParsed.fieldErrors,
+        message: errorParsed.message,
+      };
     }
   };
 

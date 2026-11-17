@@ -116,17 +116,17 @@ const VoiceSearchButton = ({ onTranscript, onSearch, className = '' }) => {
       <button
         type="button"
         onClick={toggleListening}
-        className={`relative p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center ${
+        className={`relative p-2 rounded-full transition-all cursor-pointer flex items-center justify-center ${
           isListening
-            ? 'bg-rose-600 text-white ring-4 ring-rose-500/30 scale-105'
-            : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+            ? 'bg-[#0284C7] text-white ring-4 ring-[#0284C7]/30 scale-105'
+            : 'text-slate-400 hover:text-[#0284C7] hover:bg-sky-50'
         } ${className}`}
         title={isListening ? 'Listening... Click to stop' : 'Search by Voice'}
         aria-label="Search by voice"
       >
         {isListening ? (
           <>
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-xl bg-rose-400 opacity-75"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
             <Mic className="w-4 h-4 text-white relative z-10 animate-bounce" />
           </>
         ) : (

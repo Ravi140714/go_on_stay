@@ -5,7 +5,8 @@ import { Hotel, Mail, Phone, MapPin, ShieldCheck, Heart, Sparkles, ArrowUpRight 
 const Footer = () => {
   const location = useLocation();
 
-  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/owner')) {
+  // Show footer strictly on Home page ('/') only
+  if (location.pathname !== '/') {
     return null;
   }
 

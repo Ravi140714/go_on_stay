@@ -282,7 +282,7 @@ const PartnerBenefits = () => {
 
               <Link
                 to="/become-host"
-                className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs text-center block transition-all shadow-lg shadow-rose-600/30 cursor-pointer"
+                className="btn-primary w-full py-3 text-xs uppercase font-black text-center block cursor-pointer"
               >
                 Claim This Profit & List Property Now →
               </Link>

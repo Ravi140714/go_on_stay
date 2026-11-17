@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { parseApiError } from '../utils/errorHandler';
 
 const PaymentPage = () => {
   const [searchParams] = useSearchParams();
@@ -158,8 +159,8 @@ const PaymentPage = () => {
       showToast('New Razorpay payment order generated. Retrying checkout...');
     } catch (err) {
       console.error('Retry order failed:', err);
-      const msg = err.response?.data?.error || 'Failed to retry payment order.';
-      showToast(msg, 'error');
+      const parsed = parseApiError(err, 'Failed to retry payment order.');
+      showToast(parsed.message, 'error');
     } finally {
       setRetrying(false);
     }
@@ -192,7 +193,7 @@ const PaymentPage = () => {
   }
 
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen pb-16 relative">
+    <div className="min-h-screen pb-16 relative bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
       
       {/* SSL Encryption Security Header */}
       <div className="bg-[#d5e7f5]/80 backdrop-blur-md border-b border-sky-200/60 py-4 px-4 sm:px-6 lg:px-8">
@@ -407,7 +408,7 @@ const PaymentPage = () => {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={handleOpenRazorpayCheckout}
-                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 py-2.5 px-4 rounded-xl text-xs font-extrabold transition-colors"
+                    className="w-full btn-secondary py-2.5 px-4 text-xs font-extrabold cursor-pointer"
                   >
                     Re-open Razorpay Modal
                   </button>

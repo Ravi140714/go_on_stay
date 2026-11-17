@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import {
   Hotel, ShieldCheck, Tag, CheckCircle2, Award, Users, Building2,
-  Lock, Sparkles, Clock, ArrowRight, Heart, Star, PhoneCall
+  Lock, Sparkles, Clock, Heart, Star, PhoneCall
 } from 'lucide-react';
 
 const AboutUs = () => {
@@ -128,10 +128,10 @@ const AboutUs = () => {
             Explore handpicked hotels across top Indian destinations with direct owner pricing and instant confirmation.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link to="/search" className="btn-teal py-3 px-8 text-xs font-extrabold uppercase tracking-wider shadow-lg shadow-teal-600/30">
-              Browse All Hotels <ArrowRight className="w-4 h-4" />
+            <Link to="/search" className="btn-teal inline-flex items-center justify-center py-3 px-8 text-xs font-extrabold uppercase tracking-wider shadow-lg shadow-teal-600/30">
+              Browse All Hotels
             </Link>
-            <Link to="/register" className="btn-dark py-3 px-8 text-xs font-extrabold uppercase tracking-wider">
+            <Link to="/register" className="btn-dark inline-flex items-center justify-center py-3 px-8 text-xs font-extrabold uppercase tracking-wider">
               List Your Hotel Property
             </Link>
           </div>

@@ -1,50 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calendar, Layers, CheckCircle2, RefreshCw, Zap, ShieldCheck,
   Building2, Users, ArrowRight, Sparkles, Sliders, Bell,
   Clock, BedDouble, Lock, ArrowUpRight
 } from 'lucide-react';
+import api from '../services/api';
 
 const RealTimeInventory = () => {
-  // Interactive Room Grid Simulation State
-  const [demoRooms, setDemoRooms] = useState([
-    { id: 101, name: 'Deluxe Ocean View Suite', type: 'Suite', price: 4500, status: 'AVAILABLE' },
-    { id: 102, name: 'Executive King Room', type: 'Standard', price: 2800, status: 'OCCUPIED' },
-    { id: 103, name: 'Garden Cottage Villa', type: 'Villa', price: 6200, status: 'AVAILABLE' },
-    { id: 104, name: 'Heritage Courtyard Room', type: 'Heritage', price: 3400, status: 'CLEANING' },
-    { id: 105, name: 'Royal Penthouse Suite', type: 'Luxury', price: 9500, status: 'BLOCKED' },
-    { id: 106, name: 'Standard Twin Room', type: 'Standard', price: 2200, status: 'AVAILABLE' }
-  ]);
+  const [liveRooms, setLiveRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const toggleRoomStatus = (id) => {
-    setDemoRooms((prev) =>
-      prev.map((r) => {
-        if (r.id === id) {
-          const nextStatus =
-            r.status === 'AVAILABLE' ? 'OCCUPIED' :
-            r.status === 'OCCUPIED' ? 'CLEANING' :
-            r.status === 'CLEANING' ? 'BLOCKED' : 'AVAILABLE';
-          return { ...r, status: nextStatus };
-        }
-        return r;
-      })
-    );
+  useEffect(() => {
+    fetchLiveRooms();
+  }, []);
+
+  const fetchLiveRooms = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/rooms/?page_size=6');
+      const list = res.data?.results || (Array.isArray(res.data) ? res.data : []);
+      setLiveRooms(list);
+    } catch (err) {
+      console.error('Failed to load real room inventory:', err);
+      setLiveRooms([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'AVAILABLE':
-        return <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">Live Available</span>;
-      case 'OCCUPIED':
-        return <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 text-[10px] font-black uppercase">Guest Occupied</span>;
-      case 'CLEANING':
-        return <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black uppercase">Housekeeping</span>;
-      case 'BLOCKED':
-        return <span className="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 text-[10px] font-black uppercase">Maintenance Blocked</span>;
-      default:
-        return null;
+  const getStatusBadge = (isAvailable, remaining) => {
+    if (isAvailable && remaining > 0) {
+      return (
+        <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
+          Live Available ({remaining} left)
+        </span>
+      );
     }
+    return (
+      <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 text-[10px] font-black uppercase tracking-wider">
+        Sold Out / Reserved
+      </span>
+    );
   };
 
   return (
@@ -91,17 +88,17 @@ const RealTimeInventory = () => {
         </div>
       </section>
 
-      {/* INTERACTIVE INVENTORY SIMULATOR DEMO */}
+      {/* REAL INVENTORY LIVE MONITOR */}
       <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto mb-12">
           <span className="text-xs font-extrabold text-teal-600 uppercase tracking-widest block mb-2">
-            Try The Live Demo
+            Live Database Inventory
           </span>
           <h2 className="text-2xl sm:text-4xl font-black text-slate-900">
-            Click Any Room To Toggle Live Availability
+            Real-Time Hotel Room Units Status
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-2">
-            Experience how seamlessly GoOnStay updates inventory status in real-time without refreshing pages.
+            Directly connected to verified hotel categories and real physical room units from our live database.
           </p>
         </div>
 
@@ -110,56 +107,86 @@ const RealTimeInventory = () => {
             <div>
               <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-teal-600" />
-                Grand Heritage Palace & Resort — Live Room Floor Grid
+                Live Property Room Categories & Availability
               </h3>
               <p className="text-xs text-slate-400 font-bold mt-0.5">
-                Current local operational status • Microsecond Sync Active
+                Current operational database status • Synced with Live Reservations
               </p>
             </div>
             <div className="flex items-center gap-3 text-xs font-bold text-slate-500">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Available</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Occupied</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Housekeeping</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span> Blocked</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Live Available</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Sold Out / Reserved</span>
             </div>
           </div>
 
-          {/* Grid of rooms */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {demoRooms.map((room) => (
-              <div
-                key={room.id}
-                onClick={() => toggleRoomStatus(room.id)}
-                className="p-5 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-teal-50/40 hover:border-teal-300 transition-all cursor-pointer shadow-2xs group relative space-y-3"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-[11px] font-black text-slate-400 block uppercase tracking-wider">
-                      Room #{room.id} • {room.type}
-                    </span>
-                    <h4 className="text-sm font-black text-slate-900 group-hover:text-teal-700 transition-colors">
-                      {room.name}
-                    </h4>
-                  </div>
-                  {getStatusBadge(room.status)}
-                </div>
-
-                <div className="flex justify-between items-center pt-2 border-t border-slate-200/80 text-xs">
-                  <span className="font-bold text-teal-600">
-                    ₹{room.price.toLocaleString('en-IN')} <span className="text-slate-400 text-[10px]">/ night</span>
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-400 group-hover:text-teal-600 flex items-center gap-1">
-                    Click to switch state ↻
-                  </span>
-                </div>
+          {loading ? (
+            <div className="py-16 text-center space-y-3">
+              <div className="w-8 h-8 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <p className="text-xs font-bold text-slate-500">Loading live inventory...</p>
+            </div>
+          ) : liveRooms.length === 0 ? (
+            <div className="py-16 text-center space-y-3 max-w-md mx-auto">
+              <BedDouble className="w-12 h-12 text-slate-300 mx-auto" />
+              <h4 className="text-base font-black text-slate-900">No Active Room Categories Found</h4>
+              <p className="text-xs text-slate-500 font-medium">
+                Hotel owners can list hotels and define room categories from the Owner Portal.
+              </p>
+              <div className="pt-2">
+                <Link to="/become-host" className="btn-primary py-2 px-5 text-xs font-bold inline-flex">
+                  List Your Property
+                </Link>
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {liveRooms.map((room) => {
+                const remaining = room.available_count ?? room.total_rooms ?? 1;
+                const isAvail = room.is_available !== false && remaining > 0;
 
-          <div className="mt-6 p-4 rounded-2xl bg-teal-50 border border-teal-200 text-teal-900 text-xs flex items-center justify-between">
+                return (
+                  <div
+                    key={room.id}
+                    className="p-5 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-teal-50/40 hover:border-teal-300 transition-all shadow-2xs group relative space-y-3"
+                  >
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0">
+                        <span className="text-[11px] font-black text-slate-400 block uppercase tracking-wider truncate">
+                          {room.hotel_name || 'Verified Property'} • {room.hotel_city || 'India'}
+                        </span>
+                        <h4 className="text-sm font-black text-slate-900 group-hover:text-teal-700 transition-colors truncate">
+                          {room.title}
+                        </h4>
+                        <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded mt-1 inline-block">
+                          {room.room_type}
+                        </span>
+                      </div>
+                      {getStatusBadge(isAvail, remaining)}
+                    </div>
+
+                    <div className="flex justify-between items-center pt-2 border-t border-slate-200/80 text-xs">
+                      <span className="font-bold text-teal-600">
+                        ₹{parseFloat(room.price_per_night || 0).toLocaleString('en-IN')} <span className="text-slate-400 text-[10px]">/ night</span>
+                      </span>
+                      {room.hotel && (
+                        <Link
+                          to={`/hotels/${room.hotel}`}
+                          className="text-[11px] font-extrabold text-teal-600 hover:text-teal-800 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform"
+                        >
+                          <span>View Hotel</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-6 p-4 rounded-2xl bg-teal-50 border border-teal-200 text-teal-900 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <span className="font-bold flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-teal-600" />
-              Full inventory controls with room photos, amenity tags & pricing tiers are available in your Owner Portal.
+              <Sparkles className="w-4 h-4 text-teal-600 shrink-0" />
+              Full inventory controls with room photos, amenity tags & pricing tiers are managed live in your Owner Portal.
             </span>
             <Link
               to="/login"

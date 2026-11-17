@@ -12,13 +12,54 @@ import CategoryTabs from '../components/CategoryTabs';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 
+// Module-level in-memory cache to ensure instant photo and city rendering across SPA navigations
+let memoryCachedHotels = null;
+let memoryCachedCities = null;
+
+// High-quality verified stay fallback photos so hero cards NEVER render blank/white
+const FALLBACK_HERO_PHOTOS = [
+  { id: 1, name: 'Luxury Villa Stay', city: 'Goa', url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80', rating: 4.9 },
+  { id: 2, name: 'Royal Heritage Palace', city: 'Udaipur', url: 'https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=800&q=80', rating: 4.8 },
+  { id: 3, name: 'Serene Mountain Resort', city: 'Manali', url: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=800&q=80', rating: 4.9 },
+  { id: 4, name: 'Beachfront Haven', city: 'Kovalam', url: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80', rating: 4.7 },
+  { id: 5, name: 'Contemporary Urban Suite', city: 'Mumbai', url: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=800&q=80', rating: 4.8 },
+  { id: 6, name: 'Emerald Hilltop Retreat', city: 'Munnar', url: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=800&q=80', rating: 4.9 },
+  { id: 7, name: 'Lakeside Boutique Inn', city: 'Nainital', url: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&w=800&q=80', rating: 4.6 },
+  { id: 8, name: 'Desert Oasis Resort', city: 'Jaisalmer', url: 'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&w=800&q=80', rating: 4.8 },
+  { id: 9, name: 'Grand Bay Hotel', city: 'Kochi', url: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=800&q=80', rating: 4.7 }
+];
+
+let cachedHeroPhotos = null;
+try {
+  const saved = localStorage.getItem('bmr_hero_photos_cache');
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (Array.isArray(parsed) && parsed.length > 0) cachedHeroPhotos = parsed;
+  }
+} catch (e) {}
+
 const Home = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { user, showToast } = useAuth();
 
-  const [featuredHotels, setFeaturedHotels] = useState([]);
-  const [loadingHotels, setLoadingHotels] = useState(true);
+  const [featuredHotels, setFeaturedHotels] = useState(() => {
+    if (memoryCachedHotels && memoryCachedHotels.length > 0) {
+      return memoryCachedHotels;
+    }
+    try {
+      const saved = sessionStorage.getItem('bmr_cached_featured_hotels');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          memoryCachedHotels = parsed;
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+  const [loadingHotels, setLoadingHotels] = useState(() => !memoryCachedHotels || memoryCachedHotels.length === 0);
 
   // Wishlist State & Handlers
   const [userWishlist, setUserWishlist] = useState([]);
@@ -65,13 +106,48 @@ const Home = () => {
 
   // Scroll Ref for Popular Cities horizontal navigation
   const cityScrollRef = useRef(null);
+  const [activeCities, setActiveCities] = useState(() => {
+    if (memoryCachedCities && memoryCachedCities.length > 0) {
+      return memoryCachedCities;
+    }
+    try {
+      const saved = sessionStorage.getItem('bmr_cached_active_cities');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          memoryCachedCities = parsed;
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
 
   useEffect(() => {
     fetchFeaturedHotels();
+    fetchActiveCities();
   }, []);
 
+  const fetchActiveCities = async () => {
+    try {
+      const res = await api.get('/hotels/cities/');
+      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      if (list && list.length > 0) {
+        memoryCachedCities = list;
+        try {
+          sessionStorage.setItem('bmr_cached_active_cities', JSON.stringify(list));
+        } catch (e) {}
+        setActiveCities(list);
+      }
+    } catch (err) {
+      console.warn('Failed to load active cities:', err);
+    }
+  };
+
   const fetchFeaturedHotels = async () => {
-    setLoadingHotels(true);
+    if (!memoryCachedHotels || memoryCachedHotels.length === 0) {
+      setLoadingHotels(true);
+    }
     try {
       const res = await api.get('/hotels/');
       const rawList = res.data.results || res.data;
@@ -81,6 +157,10 @@ const Home = () => {
         if (ratingB !== ratingA) return ratingB - ratingA;
         return (b.reviews_count || 0) - (a.reviews_count || 0);
       });
+      memoryCachedHotels = sorted;
+      try {
+        sessionStorage.setItem('bmr_cached_featured_hotels', JSON.stringify(sorted));
+      } catch (e) {}
       setFeaturedHotels(sorted);
     } catch (err) {
       console.error('Failed to load featured hotels:', err);
@@ -89,14 +169,41 @@ const Home = () => {
     }
   };
 
+  // Derive popular cities dynamically from actual backend cities and hotels
+  const popularCities = useMemo(() => {
+    if (!activeCities || activeCities.length === 0) return [];
+    return activeCities.map((cityName) => {
+      const hotelsInCity = (featuredHotels || []).filter(
+        (h) => (h.city || '').toLowerCase() === cityName.toLowerCase()
+      );
+      const firstImgHotel = hotelsInCity.find((h) => h.primary_image || h.cover_image || (h.images && h.images[0]?.display_url));
+      const imgUrl = firstImgHotel?.primary_image || firstImgHotel?.cover_image || firstImgHotel?.images?.[0]?.display_url || null;
+
+      return {
+        name: cityName,
+        count: `${hotelsInCity.length} Verified ${hotelsInCity.length === 1 ? 'Stay' : 'Stays'}`,
+        image: imgUrl,
+      };
+    });
+  }, [activeCities, featuredHotels]);
+
+  // Infinite loop array for slider
+  const infinitePopularCities = useMemo(() => {
+    if (popularCities.length === 0) return [];
+    if (popularCities.length < 4) return [...popularCities, ...popularCities, ...popularCities, ...popularCities];
+    return [...popularCities, ...popularCities, ...popularCities];
+  }, [popularCities]);
+
   // Auto-slide 1 single card every 3 seconds (3000ms) with seamless infinite forward loop
   const [isPaused, setIsPaused] = useState(false);
 
   const slideNextCard = () => {
-    if (cityScrollRef.current) {
+    if (cityScrollRef.current && popularCities.length > 0) {
       const container = cityScrollRef.current;
-      const cardStep = 284; // 260px card width + 24px gap
-      const singleSetWidth = popularCities.length * cardStep; // 12 * 284 = 3408px
+      const firstCard = container.querySelector('.destination-card') || container.children[0];
+      const cardWidth = firstCard ? firstCard.getBoundingClientRect().width : 284;
+      const cardStep = cardWidth + 24; // card width + gap (24px = gap-6)
+      const singleSetWidth = popularCities.length * cardStep;
 
       // If we scrolled past the first set, instantly reset scrollLeft back by 1 set width without backward animation
       if (container.scrollLeft >= singleSetWidth) {
@@ -110,9 +217,11 @@ const Home = () => {
   };
 
   const slidePrevCard = () => {
-    if (cityScrollRef.current) {
+    if (cityScrollRef.current && popularCities.length > 0) {
       const container = cityScrollRef.current;
-      const cardStep = 284;
+      const firstCard = container.querySelector('.destination-card') || container.children[0];
+      const cardWidth = firstCard ? firstCard.getBoundingClientRect().width : 284;
+      const cardStep = cardWidth + 24;
       const singleSetWidth = popularCities.length * cardStep;
 
       if (container.scrollLeft <= 0) {
@@ -125,26 +234,13 @@ const Home = () => {
   };
 
   useEffect(() => {
-    if (isPaused) return;
+    if (isPaused || popularCities.length === 0) return;
     const timer = setInterval(() => {
       slideNextCard();
     }, 3000);
 
     return () => clearInterval(timer);
-  }, [isPaused]);
-
-  // Comprehensive list of all major Indian popular cities
-  const popularCities = [
-    { name: 'Ahmedabad', count: 'Verified Hotels', image: 'https://images.unsplash.com/photo-1570168007204-dfb528c6958f?auto=format&fit=crop&w=600&q=80' },
-    { name: 'Surat', count: 'Diamond & Silk City Stays', image: 'https://images.unsplash.com/photo-1596176530529-78163a4f7af2?auto=format&fit=crop&w=600&q=80' },
-    { name: 'Mumbai', count: 'Luxury Stays', image: 'https://images.unsplash.com/photo-1566552881560-0be862a7c445?auto=format&fit=crop&w=600&q=80' },
-    { name: 'Goa', count: 'Beach Resorts', image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=600&q=80' },
-    { name: 'Jaipur', count: 'Heritage Palaces', image: 'https://images.unsplash.com/photo-1477587458883-47145ed94245?auto=format&fit=crop&w=600&q=80' },
-    { name: 'Udaipur', count: 'Lake Palaces', image: 'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=600&q=80' },
-  ];
-
-  // Tripled cities array for seamless infinite looping without visible reset
-  const infinitePopularCities = [...popularCities, ...popularCities, ...popularCities];
+  }, [isPaused, popularCities.length]);
 
   // Selected Category: 'HOTELS' | 'VILLAS'
   const [selectedCategory, setSelectedCategory] = useState('HOTELS');
@@ -222,7 +318,9 @@ const Home = () => {
 
   // Extract hotel photos from user database hotels for the hero mosaic grid
   const heroHotelPhotos = useMemo(() => {
-    if (!featuredHotels || featuredHotels.length === 0) return [];
+    if (!featuredHotels || featuredHotels.length === 0) {
+      return cachedHeroPhotos || FALLBACK_HERO_PHOTOS;
+    }
     const list = [];
     featuredHotels.forEach((hotel) => {
       if (hotel.primary_image) {
@@ -249,23 +347,21 @@ const Home = () => {
         });
       }
     });
-    return list;
+
+    if (list.length > 0) {
+      const topSlice = list.slice(0, 15);
+      cachedHeroPhotos = topSlice;
+      try {
+        localStorage.setItem('bmr_hero_photos_cache', JSON.stringify(topSlice));
+      } catch (e) {}
+      return list;
+    }
+
+    return cachedHeroPhotos || FALLBACK_HERO_PHOTOS;
   }, [featuredHotels]);
 
-  const fallbackHeroPhotos = [
-    { id: 1, name: 'The Grand Royal Palace & Resort', city: 'Ahmedabad', url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80' },
-    { id: 2, name: 'Marine Horizon Bay Hotel', city: 'Mumbai', url: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80' },
-    { id: 3, name: 'Goa Palms Beach Resort & Spa', city: 'Goa', url: 'https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=800&q=80' },
-    { id: 28, name: 'The Palm Serenity Private Pool Villa', city: 'Goa', url: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80' },
-    { id: 29, name: 'Lakeview Heritage Villa & Homestay', city: 'Udaipur', url: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=800&q=80' },
-    { id: 30, name: 'Whispering Pines Forest Villa', city: 'Jaipur', url: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=800&q=80' },
-    { id: 31, name: 'The Royal Courtyard Traditional Homestay', city: 'Surat', url: 'https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=800&q=80' },
-    { id: 32, name: 'oyo Standard Stay', city: 'Ahmedabad', url: 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=800&q=80' },
-    { id: 1, name: 'Luxury Pool Resort', city: 'Goa', url: 'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&w=800&q=80' }
-  ];
-
-  const heroPhotos = heroHotelPhotos.length >= 3 ? heroHotelPhotos : fallbackHeroPhotos;
-  const getPhoto = (index) => heroPhotos[index % heroPhotos.length];
+  const heroPhotos = heroHotelPhotos.length > 0 ? heroHotelPhotos : (cachedHeroPhotos || FALLBACK_HERO_PHOTOS);
+  const getPhoto = (index) => (heroPhotos.length > 0 ? heroPhotos[index % heroPhotos.length] : null);
 
   return (
     <div className="bg-[#eaf3f9] text-slate-900 min-h-screen overflow-x-clip">
@@ -274,7 +370,7 @@ const Home = () => {
       <section className="relative z-30 pt-8 pb-14 sm:pt-12 sm:pb-16 bg-gradient-to-b from-[#d5e7f5] via-[#e2eef7] to-[#eaf3f9] border-b border-sky-100/70">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
-            
+
             {/* Left Column: Heading, Subtitle, Search Capsule, Recently Viewed */}
             <div className="lg:col-span-7 space-y-5 text-left">
               <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-black text-slate-900 tracking-tight leading-[1.12]">
@@ -414,16 +510,23 @@ const Home = () => {
                   ].map((item, idx) => (
                     <div
                       key={`c1-${idx}`}
-                      className={`relative ${item.h} rounded-2xl sm:rounded-3xl overflow-hidden shadow-md bg-slate-200 select-none pointer-events-none`}
+                      className={`relative ${item.h} rounded-2xl sm:rounded-3xl overflow-hidden shadow-md bg-slate-100 select-none pointer-events-none`}
                     >
-                      <img
-                        src={item.photo.url}
-                        alt={item.photo.name}
-                        className="w-full h-full object-cover select-none pointer-events-none"
-                        onError={(e) => {
-                          e.target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
-                        }}
-                      />
+                      {item.photo?.url ? (
+                        <img
+                          src={item.photo.url}
+                          alt={item.photo.name}
+                          loading="eager"
+                          fetchpriority="high"
+                          decoding="async"
+                          className="w-full h-full object-cover select-none pointer-events-none transition-opacity duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-3 bg-gradient-to-br from-sky-100 to-teal-50 text-slate-400">
+                          <Hotel className="w-6 h-6 text-teal-600/40 mb-1" />
+                          <span className="text-[9px] font-bold text-slate-400 text-center">Verified Stays</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -437,16 +540,23 @@ const Home = () => {
                   ].map((item, idx) => (
                     <div
                       key={`c2-${idx}`}
-                      className={`relative ${item.h} rounded-2xl sm:rounded-3xl overflow-hidden shadow-md bg-slate-200 select-none pointer-events-none`}
+                      className={`relative ${item.h} rounded-2xl sm:rounded-3xl overflow-hidden shadow-md bg-slate-100 select-none pointer-events-none`}
                     >
-                      <img
-                        src={item.photo.url}
-                        alt={item.photo.name}
-                        className="w-full h-full object-cover select-none pointer-events-none"
-                        onError={(e) => {
-                          e.target.src = 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80';
-                        }}
-                      />
+                      {item.photo?.url ? (
+                        <img
+                          src={item.photo.url}
+                          alt={item.photo.name}
+                          loading="eager"
+                          fetchpriority="high"
+                          decoding="async"
+                          className="w-full h-full object-cover select-none pointer-events-none transition-opacity duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-3 bg-gradient-to-br from-sky-100 to-teal-50 text-slate-400">
+                          <Hotel className="w-6 h-6 text-teal-600/40 mb-1" />
+                          <span className="text-[9px] font-bold text-slate-400 text-center">Verified Stays</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -460,16 +570,23 @@ const Home = () => {
                   ].map((item, idx) => (
                     <div
                       key={`c3-${idx}`}
-                      className={`relative ${item.h} rounded-2xl sm:rounded-3xl overflow-hidden shadow-md bg-slate-200 select-none pointer-events-none`}
+                      className={`relative ${item.h} rounded-2xl sm:rounded-3xl overflow-hidden shadow-md bg-slate-100 select-none pointer-events-none`}
                     >
-                      <img
-                        src={item.photo.url}
-                        alt={item.photo.name}
-                        className="w-full h-full object-cover select-none pointer-events-none"
-                        onError={(e) => {
-                          e.target.src = 'https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=800&q=80';
-                        }}
-                      />
+                      {item.photo?.url ? (
+                        <img
+                          src={item.photo.url}
+                          alt={item.photo.name}
+                          loading="eager"
+                          fetchpriority="high"
+                          decoding="async"
+                          className="w-full h-full object-cover select-none pointer-events-none transition-opacity duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-3 bg-gradient-to-br from-sky-100 to-teal-50 text-slate-400">
+                          <Hotel className="w-6 h-6 text-teal-600/40 mb-1" />
+                          <span className="text-[9px] font-bold text-slate-400 text-center">Verified Stays</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -502,21 +619,28 @@ const Home = () => {
             ref={cityScrollRef}
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
-            className="flex gap-6 overflow-x-auto scroll-smooth py-4 pr-4 no-scrollbar border-b border-transparent"
+            className="flex gap-6 overflow-x-auto scroll-smooth py-4 no-scrollbar border-b border-transparent"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {infinitePopularCities.map((city, index) => (
               <div
                 key={`${city.name}-${index}`}
                 onClick={() => navigate(`/search?city=${encodeURIComponent(city.name)}`)}
-                className="min-w-[260px] max-w-[260px] group relative h-64 rounded-xl overflow-hidden cursor-pointer shadow-sm border border-slate-200 flex-shrink-0 transition-all duration-300 hover:border-slate-300 hover:shadow-md"
+                className="destination-card w-full sm:w-[calc((100%-1.5rem)/2)] md:w-[calc((100%-3rem)/3)] lg:w-[calc((100%-4.5rem)/4)] min-w-full sm:min-w-[calc((100%-1.5rem)/2)] md:min-w-[calc((100%-3rem)/3)] lg:min-w-[calc((100%-4.5rem)/4)] max-w-full sm:max-w-[calc((100%-1.5rem)/2)] md:max-w-[calc((100%-3rem)/3)] lg:max-w-[calc((100%-4.5rem)/4)] group relative h-64 rounded-xl overflow-hidden cursor-pointer shadow-sm border border-slate-200 flex-shrink-0 transition-all duration-300 hover:border-slate-300 hover:shadow-md"
               >
-                {/* Background Image */}
-                <img
-                  src={city.image}
-                  alt={city.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
-                />
+                {/* Background Image or Clean Placeholder */}
+                {city.image ? (
+                  <img
+                    src={city.image}
+                    alt={city.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-sky-800 via-slate-800 to-teal-900 flex flex-col items-center justify-center p-4 text-center">
+                    <Hotel className="w-10 h-10 text-white/30 mb-1" />
+                    <span className="text-xs font-bold text-white/60">{city.name}</span>
+                  </div>
+                )}
 
                 {/* Dark Vignette Overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent"></div>
@@ -583,8 +707,8 @@ const Home = () => {
                 key={cityName}
                 onClick={() => setSelectedCityFilter(cityName)}
                 className={`px-4 py-2 rounded-full text-xs font-black transition-all cursor-pointer whitespace-nowrap ${selectedCityFilter === cityName
-                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/25'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/25'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
                   }`}
               >
                 {cityName === 'ALL' ? 'All City Rows' : cityName}
@@ -757,14 +881,13 @@ const Home = () => {
                             <button
                               type="button"
                               onClick={(e) => handleToggleWishlist(e, hotel)}
-                              className={`absolute top-2.5 left-2.5 p-2 rounded-full backdrop-blur-md shadow-md transition-all duration-300 z-10 cursor-pointer ${
-                                userWishlist.includes(hotel.id)
-                                  ? 'bg-rose-600 text-white hover:bg-rose-700 scale-105'
-                                  : 'bg-slate-900/60 text-white hover:bg-rose-600 hover:text-white'
-                              }`}
-                              title={userWishlist.includes(hotel.id) ? 'Remove from Wishlist' : 'Save to Wishlist'}
+                              className={`absolute top-2.5 left-2.5 p-2 rounded-full backdrop-blur-md shadow-md transition-all duration-300 z-10 cursor-pointer ${userWishlist?.includes(hotel.id)
+                                ? 'bg-rose-600 text-white hover:bg-rose-700 scale-105'
+                                : 'bg-slate-900/60 text-white hover:bg-rose-600 hover:text-white'
+                                }`}
+                              title={userWishlist?.includes(hotel.id) ? 'Remove from Wishlist' : 'Save to Wishlist'}
                             >
-                              <Heart className={`w-3.5 h-3.5 ${userWishlist.includes(hotel.id) ? 'fill-current' : ''}`} />
+                              <Heart className={`w-3.5 h-3.5 ${userWishlist?.includes(hotel.id) ? 'fill-current' : ''}`} />
                             </button>
                           </div>
 

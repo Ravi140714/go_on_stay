@@ -293,11 +293,11 @@ const Navbar = () => {
                 <span>Who</span>
               </button>
 
-              {/* Search Button (Pink Circle) */}
+              {/* Search Button (Sky Blue Circle) */}
               <button
                 type="button"
                 onClick={handleNavSearchSubmit}
-                className="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 flex items-center justify-center text-white shrink-0 ml-1 shadow-md shadow-rose-600/30 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                className="w-8 h-8 rounded-full bg-[#0284C7] hover:bg-[#0369A1] flex items-center justify-center text-white shrink-0 ml-1 shadow-[0_4px_12px_rgba(2,132,199,0.25)] hover:scale-105 active:scale-95 transition-all cursor-pointer"
                 title="Search Stays"
               >
                 <Search className="w-3.5 h-3.5 stroke-[3]" />
@@ -442,7 +442,7 @@ const Navbar = () => {
                 <button
                   type="button"
                   onClick={() => setActiveNavSearchTab('who')}
-                  className="w-full py-2.5 text-xs font-black uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-colors shadow-md shadow-rose-600/20"
+                  className="w-full py-2.5 text-xs font-black uppercase tracking-wider bg-[#0284C7] hover:bg-[#0369A1] text-white rounded-full transition-colors shadow-[0_4px_12px_rgba(2,132,199,0.25)] cursor-pointer"
                 >
                   Continue to Guests & Rooms
                 </button>
@@ -533,7 +533,7 @@ const Navbar = () => {
                 <button
                   type="button"
                   onClick={handleNavSearchSubmit}
-                  className="w-full py-2.5 text-xs font-black uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-colors shadow-md shadow-rose-600/30 flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 text-xs font-black uppercase tracking-wider bg-[#0284C7] hover:bg-[#0369A1] text-white rounded-full transition-colors shadow-[0_4px_12px_rgba(2,132,199,0.25)] flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Search className="w-4 h-4 stroke-[3]" /> Search Available Stays
                 </button>
@@ -574,7 +574,7 @@ const Navbar = () => {
               </button>
 
               {dropdownOpen && (
-                <div className="absolute right-0 mt-3 w-64 rounded-3xl bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-2xl p-2.5 animate-fade-in z-50">
+                <div className="absolute right-0 mt-3 w-64 rounded-3xl bg-white border border-slate-200 shadow-2xl p-2.5 animate-fade-in z-50">
                   {user ? (
                     <>
                       <Link

@@ -70,7 +70,7 @@ const Sidebar = ({
           className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${
             isLuxury
               ? 'bg-gradient-to-br from-[#BF8E36] via-[#D8A74B] to-[#BF8E36] text-white font-black shadow-md shadow-amber-950/40 group-hover:scale-105'
-              : 'bg-red-600 group-hover:bg-red-700 text-white shadow-xs'
+              : 'bg-gradient-to-br from-sky-500 via-sky-600 to-sky-700 text-white shadow-sm shadow-sky-600/25 group-hover:scale-105'
           }`}
         >
           <Hotel className="w-5 h-5" />
@@ -80,7 +80,7 @@ const Sidebar = ({
             className={`text-base font-black tracking-tight truncate transition-colors ${
               isLuxury
                 ? 'text-white group-hover:text-[#F3E5AB]'
-                : 'text-slate-900 group-hover:text-red-600'
+                : 'text-slate-900 group-hover:text-sky-700'
             }`}
           >
             {title}
@@ -91,7 +91,7 @@ const Sidebar = ({
                 className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider whitespace-nowrap inline-flex items-center leading-none ${
                   isLuxury
                     ? 'bg-[#D4AF37]/15 text-[#F3E5AB] border border-[#D4AF37]/40 shadow-xs'
-                    : 'bg-red-50 text-red-700 border border-red-200'
+                    : 'bg-[#eaf3f9] text-sky-800 border border-sky-200 shadow-2xs'
                 }`}
               >
                 {badgeText}
@@ -124,12 +124,12 @@ const Sidebar = ({
                   className={`w-full flex items-center justify-between px-2.5 pt-2 pb-1 text-[10px] font-black uppercase tracking-wider text-left transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 active:outline-none focus-visible:outline-none border-0 ring-0 ${
                     isLuxury
                       ? 'text-[#D4AF37] hover:text-[#F3E5AB]'
-                      : 'text-slate-400 hover:text-slate-700'
+                      : 'text-sky-700/80 hover:text-sky-900'
                   }`}
                 >
                   <span className="flex items-center gap-1.5">
                     {group.icon && (
-                      <group.icon className={`w-3 h-3 ${isLuxury ? 'text-[#D4AF37]' : 'text-red-600'}`} />
+                      <group.icon className={`w-3 h-3 ${isLuxury ? 'text-[#D4AF37]' : 'text-sky-600'}`} />
                     )}
                     {group.title}
                   </span>
@@ -151,21 +151,21 @@ const Sidebar = ({
                           onClick={() => {
                             onSelectTab(item.id, item.filter);
                           }}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-left cursor-pointer transition-colors duration-150 outline-none focus:outline-none focus:ring-0 active:outline-none focus-visible:outline-none border-0 ring-0 select-none ${
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-full text-xs font-bold text-left cursor-pointer transition-colors duration-150 outline-none focus:outline-none focus:ring-0 active:outline-none focus-visible:outline-none border-0 ring-0 select-none ${
                             isActive
                               ? isLuxury
                                 ? 'bg-gradient-to-r from-[#BF8E36] via-[#D8A74B] to-[#BF8E36] text-white shadow-md shadow-amber-950/40 font-bold'
-                                : 'bg-red-50 text-red-700 border-l-3 border-l-red-600 border border-red-200/60'
+                                : 'bg-[#0284C7] text-white font-black shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
                               : isLuxury
                               ? 'text-slate-400 hover:text-[#F3E5AB] hover:bg-[#1A1C22] font-medium'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                              : 'text-[#475569] hover:text-[#0F172A] hover:bg-slate-100/80 font-bold'
                           }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
                             <Icon className={`w-4 h-4 shrink-0 transition-colors ${
                               isActive
-                                ? isLuxury ? 'text-white' : 'text-red-600'
-                                : isLuxury ? 'text-slate-400 group-hover:text-white' : 'text-slate-400 group-hover:text-red-600'
+                                ? isLuxury ? 'text-white' : 'text-white'
+                                : isLuxury ? 'text-slate-400 group-hover:text-white' : 'text-[#475569] group-hover:text-[#0F172A]'
                             }`} />
                             <span className="truncate text-left">{item.label}</span>
                           </div>
@@ -175,10 +175,10 @@ const Sidebar = ({
                               isActive
                                 ? isLuxury
                                   ? 'bg-gradient-to-r from-[#D4AF37] to-[#C5A880] text-slate-950 font-black shadow-xs'
-                                  : 'bg-red-600 text-white'
+                                  : 'bg-white/20 text-white font-black'
                                 : isLuxury
                                 ? 'bg-slate-800/90 text-slate-300 border border-slate-700/60'
-                                : 'bg-slate-100 text-slate-600'
+                                : 'bg-slate-100 text-[#475569]'
                             }`}>
                               {item.badge}
                             </span>
@@ -187,7 +187,7 @@ const Sidebar = ({
 
                         {/* Nested Sub-Menu List */}
                         {item.subItems && item.subItems.length > 0 && (
-                          <div className={`ml-5 pl-2 border-l space-y-1 py-1 ${isLuxury ? 'border-slate-800' : 'border-slate-200'}`}>
+                          <div className={`ml-5 pl-2 border-l space-y-1 py-1 ${isLuxury ? 'border-slate-800' : 'border-sky-100'}`}>
                             {item.subItems.map((sub) => {
                               const isSubActive = activeTab === sub.id && (!sub.filter || sub.filterActive);
                               const SubIcon = sub.icon || ChevronRight;
@@ -198,27 +198,27 @@ const Sidebar = ({
                                   onClick={() => {
                                     onSelectTab(sub.id, sub.filter);
                                   }}
-                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors duration-150 text-left cursor-pointer outline-none focus:outline-none focus:ring-0 active:outline-none focus-visible:outline-none border-0 ring-0 ${
+                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition-colors duration-150 text-left cursor-pointer outline-none focus:outline-none focus:ring-0 active:outline-none focus-visible:outline-none border-0 ring-0 ${
                                     isSubActive
                                       ? isLuxury
-                                        ? 'bg-[#BF8E36] text-white font-bold rounded-lg shadow-sm'
-                                        : 'bg-red-100/60 text-red-700 font-bold border border-red-200'
+                                        ? 'bg-[#BF8E36] text-white font-bold shadow-sm'
+                                        : 'bg-[#0284C7] text-white font-black shadow-[0_2px_8px_rgba(2,132,199,0.25)]'
                                       : isLuxury
                                       ? 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                                      : 'text-[#475569] hover:text-[#0F172A] hover:bg-slate-100'
                                   }`}
                                 >
                                   <div className="flex items-center gap-1.5 truncate flex-1 pr-1">
                                     <SubIcon className={`w-3 h-3 ${
                                       isSubActive
-                                        ? isLuxury ? 'text-[#D4AF37]' : 'text-red-600'
-                                        : 'text-slate-500'
+                                        ? isLuxury ? 'text-[#D4AF37]' : 'text-white'
+                                        : 'text-[#475569]'
                                     }`} />
                                     <span className="truncate text-left">{sub.label}</span>
                                   </div>
                                   {!isLuxury && sub.badge !== undefined && sub.badge !== null && (
-                                    <span className={`shrink-0 text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${
-                                      isLuxury ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-slate-100 text-slate-600'
+                                    <span className={`shrink-0 text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                                      isLuxury ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-slate-100 text-[#475569]'
                                     }`}>
                                       {sub.badge}
                                     </span>
@@ -254,7 +254,7 @@ const Sidebar = ({
               className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
                 isLuxury
                   ? 'bg-gradient-to-br from-[#D4AF37] to-[#C5A880] text-slate-950 shadow-xs'
-                  : 'bg-red-50 border border-red-200 text-red-600'
+                  : 'bg-[#eaf3f9] border border-sky-200 text-sky-700'
               }`}
             >
               {user?.username?.charAt(0).toUpperCase() || 'A'}
@@ -263,8 +263,8 @@ const Sidebar = ({
               <div className={`text-xs font-bold truncate ${isLuxury ? 'text-white' : 'text-slate-900'}`}>
                 @{user?.username || 'admin'}
               </div>
-              <div className={`text-[10px] font-medium uppercase truncate ${isLuxury ? 'text-[#D4AF37]' : 'text-slate-500'}`}>
-                {user?.role || 'SUPER_ADMIN'}
+              <div className={`text-[10px] font-medium uppercase truncate ${isLuxury ? 'text-[#D4AF37]' : 'text-sky-700 font-bold'}`}>
+                {user?.role || 'HOTEL_OWNER'}
               </div>
             </div>
           </div>
@@ -274,7 +274,7 @@ const Sidebar = ({
             className={`p-1.5 rounded-lg transition-colors shrink-0 cursor-pointer outline-none focus:outline-none focus:ring-0 active:outline-none focus-visible:outline-none border-0 ring-0 ${
               isLuxury
                 ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-950/40'
-                : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
+                : 'text-slate-400 hover:text-sky-700 hover:bg-sky-50'
             }`}
             title="Log out"
           >

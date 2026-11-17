@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { BedDouble, IndianRupee, Users, ArrowLeft, Plus, Upload, X, Building, Image as ImageIcon } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { parseApiError } from '../../utils/errorHandler';
+import FieldError from '../../components/FieldError';
 
 const AddEditRoom = () => {
   const { hotelId, roomId } = useParams();
@@ -38,6 +40,7 @@ const AddEditRoom = () => {
   const [existingRoomImages, setExistingRoomImages] = useState([]);
 
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
     fetchHotelDetails();
@@ -93,6 +96,14 @@ const AddEditRoom = () => {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     const val = type === 'checkbox' ? checked : value;
+
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
 
     if (name === 'total_rooms') {
       const roomCount = parseInt(val) || 0;
@@ -186,26 +197,18 @@ const AddEditRoom = () => {
       navigate(`/owner/hotels/${hotelId}/rooms`);
     } catch (err) {
       console.error('Room save error:', err);
-      let errMsg = 'Failed to save room category.';
-      if (err.response?.data) {
-        const data = err.response.data;
-        if (typeof data === 'string') errMsg = data;
-        else if (typeof data === 'object') {
-          const keys = Object.keys(data);
-          if (keys.length > 0) {
-            const val = data[keys[0]];
-            errMsg = `${keys[0]}: ${Array.isArray(val) ? val[0] : val}`;
-          }
-        }
+      const parsed = parseApiError(err, 'Failed to save room category.');
+      if (parsed.fieldErrors && Object.keys(parsed.fieldErrors).length > 0) {
+        setFieldErrors(parsed.fieldErrors);
       }
-      showToast(errMsg, 'error');
+      showToast(parsed.message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-slate-50 text-slate-900">
+    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
       <div className="max-w-4xl mx-auto space-y-8">
         
         {/* Navigation back */}
@@ -239,8 +242,13 @@ const AddEditRoom = () => {
                 value={formData.title}
                 onChange={handleChange}
                 placeholder="e.g. Deluxe King Suite with Pool View"
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
+                className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-semibold focus:bg-white outline-none transition-all ${
+                  fieldErrors.title
+                    ? 'border-rose-500 ring-2 ring-rose-500/20'
+                    : 'border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20'
+                }`}
               />
+              <FieldError error={fieldErrors.title} />
             </div>
 
             <div>
@@ -276,8 +284,13 @@ const AddEditRoom = () => {
                 value={formData.price_per_night}
                 onChange={handleChange}
                 placeholder="2500.00"
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-teal-600 focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
+                className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-bold text-teal-600 focus:bg-white outline-none transition-all ${
+                  fieldErrors.price_per_night
+                    ? 'border-rose-500 ring-2 ring-rose-500/20'
+                    : 'border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20'
+                }`}
               />
+              <FieldError error={fieldErrors.price_per_night} />
             </div>
 
             <div>
@@ -292,8 +305,13 @@ const AddEditRoom = () => {
                 value={formData.total_rooms}
                 onChange={handleChange}
                 placeholder="5"
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
+                className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-bold focus:bg-white outline-none transition-all ${
+                  fieldErrors.total_rooms
+                    ? 'border-rose-500 ring-2 ring-rose-500/20'
+                    : 'border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20'
+                }`}
               />
+              <FieldError error={fieldErrors.total_rooms} />
             </div>
           </div>
 
@@ -311,8 +329,13 @@ const AddEditRoom = () => {
               value={formData.room_numbers}
               onChange={handleChange}
               placeholder="e.g. 101, 102, 103, 104, 105 or Villa-1, Villa-2"
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
+              className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-mono font-bold text-slate-900 focus:bg-white outline-none transition-all ${
+                fieldErrors.room_numbers
+                  ? 'border-rose-500 ring-2 ring-rose-500/20'
+                  : 'border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20'
+              }`}
             />
+            <FieldError error={fieldErrors.room_numbers} />
           </div>
 
           {/* Guest Capacity & Bed Type */}

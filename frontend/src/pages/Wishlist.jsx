@@ -36,7 +36,7 @@ const Wishlist = () => {
   };
 
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen py-10 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Header */}

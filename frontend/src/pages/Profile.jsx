@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   User, Mail, Phone, Shield, FileText, CheckCircle, Lock,
@@ -8,6 +8,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
+import { parseApiError } from '../utils/errorHandler';
+import FieldError from '../components/FieldError';
 
 const languagesList = [
   { code: 'en', name: 'English', native: 'English', flag: '🇬🇧' },
@@ -52,68 +54,176 @@ const Profile = () => {
     bio: user?.bio || '',
   });
 
+  // Sync form data whenever user object updates from backend
+  useEffect(() => {
+    if (user) {
+      setFormData((prev) => ({
+        first_name: user.first_name || prev.first_name || '',
+        last_name: user.last_name || prev.last_name || '',
+        email: user.email || prev.email || '',
+        phone_number: user.phone_number || prev.phone_number || '',
+        bio: user.bio || prev.bio || '',
+      }));
+      if (user.avatar && !avatarPreview) {
+        setAvatarPreview(user.avatar);
+      }
+    }
+  }, [user]);
+
   const [passwords, setPasswords] = useState({
     old_password: '',
     new_password: '',
   });
 
   const [notifications, setNotifications] = useState(() => {
+    if (user?.notification_preferences && typeof user.notification_preferences === 'object') {
+      return {
+        email: user.notification_preferences.email ?? true,
+        promo: user.notification_preferences.promo ?? true,
+        whatsapp: user.notification_preferences.whatsapp ?? false,
+      };
+    }
     const saved = localStorage.getItem('bmr_notifications');
     return saved ? JSON.parse(saved) : { email: true, promo: true, whatsapp: false };
   });
 
+  // Sync notification preferences whenever backend user data loads
+  useEffect(() => {
+    if (user?.notification_preferences && typeof user.notification_preferences === 'object') {
+      setNotifications({
+        email: user.notification_preferences.email ?? true,
+        promo: user.notification_preferences.promo ?? true,
+        whatsapp: user.notification_preferences.whatsapp ?? false,
+      });
+    }
+  }, [user?.notification_preferences]);
+
   const [loading, setLoading] = useState(false);
   const [passLoading, setPassLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const handleAvatarFileChange = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file (JPEG, PNG, WebP).', 'error');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Image size must be less than 5MB.', 'error');
+      return;
+    }
 
     // Local instant preview
     const previewUrl = URL.createObjectURL(file);
     setAvatarPreview(previewUrl);
 
-    // Prepare FormData
+    // Prepare multipart/form-data payload
     setAvatarLoading(true);
     const data = new FormData();
     data.append('avatar', file);
 
+    // Ensure authenticated user's actual email and profile details are preserved
+    const currentUser = user || JSON.parse(localStorage.getItem('user') || '{}');
+    const userEmail = currentUser?.email || formData.email;
+
+    if (userEmail) {
+      data.append('email', userEmail);
+    }
+    if (currentUser?.first_name || formData.first_name) {
+      data.append('first_name', currentUser?.first_name || formData.first_name);
+    }
+    if (currentUser?.last_name || formData.last_name) {
+      data.append('last_name', currentUser?.last_name || formData.last_name);
+    }
+    if (currentUser?.phone_number || formData.phone_number) {
+      data.append('phone_number', currentUser?.phone_number || formData.phone_number);
+    }
+    if (currentUser?.bio || formData.bio) {
+      data.append('bio', currentUser?.bio || formData.bio);
+    }
+
     const res = await updateProfile(data);
     if (res.success) {
-      showToast('Profile picture updated successfully!');
+      if (res.user?.avatar) {
+        setAvatarPreview(res.user.avatar);
+      }
+    } else {
+      // Revert preview on error
+      setAvatarPreview(user?.avatar || null);
     }
     setAvatarLoading(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
+    setFieldErrors({});
     setLoading(true);
-    await updateProfile(formData);
+    const submitPayload = {
+      ...formData,
+      email: formData.email || user?.email || '',
+    };
+    const res = await updateProfile(submitPayload);
+    if (!res.success && res.fieldErrors) {
+      setFieldErrors(res.fieldErrors);
+    }
     setLoading(false);
   };
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
+    setFieldErrors({});
+
+    if (!passwords.old_password) {
+      setFieldErrors({ old_password: 'Please enter your current password.' });
+      showToast('Please enter your current password.', 'error');
+      return;
+    }
+    if (!passwords.new_password || passwords.new_password.length < 8) {
+      setFieldErrors({ new_password: 'Password must be at least 8 characters long.' });
+      showToast('Password must be at least 8 characters long.', 'error');
+      return;
+    }
+
     setPassLoading(true);
     try {
       await api.post('/users/change-password/', passwords);
       showToast('Password updated successfully!');
       setPasswords({ old_password: '', new_password: '' });
     } catch (err) {
-      showToast('Failed to change password. Please check old password.', 'error');
+      const parsed = parseApiError(err, 'Failed to change password. Please check your current password.');
+      setFieldErrors(parsed.fieldErrors);
+      showToast(parsed.message, 'error');
+    } finally {
+      setPassLoading(false);
     }
-    setPassLoading(false);
   };
 
-  const toggleNotification = (key) => {
+  const toggleNotification = async (key) => {
     const updated = { ...notifications, [key]: !notifications[key] };
     setNotifications(updated);
     localStorage.setItem('bmr_notifications', JSON.stringify(updated));
-    showToast('Preference updated successfully!');
+    try {
+      await api.patch('/users/profile/', {
+        notification_preferences: updated,
+      });
+      if (updateProfile) {
+        updateProfile({ notification_preferences: updated });
+      }
+      showToast('Notification preference saved to account!', 'success');
+    } catch (err) {
+      console.error('Failed to sync notification preferences to backend:', err);
+      showToast('Preference updated locally.', 'info');
+    }
   };
 
   return (
-    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-slate-50 text-slate-900">
+    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
       <div className="max-w-4xl mx-auto space-y-8">
         
         {/* Profile Header Banner */}
@@ -147,12 +257,13 @@ const Profile = () => {
               <button
                 type="button"
                 disabled={avatarLoading}
-                className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-lg border-2 border-white transition-transform duration-200 group-hover:scale-110"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[#0284C7] hover:bg-[#0369A1] text-white flex items-center justify-center shadow-lg border-2 border-white transition-transform duration-200 group-hover:scale-110 cursor-pointer"
               >
                 {avatarLoading ? (
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 ) : (
-                  <Camera className="w-4 h-4" />
+                  <Camera className="w-4 h-4 text-white" />
                 )}
               </button>
 
@@ -175,43 +286,43 @@ const Profile = () => {
               <p className="text-sm text-slate-500 font-mono">@{user?.username} • {user?.email}</p>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="text-xs text-rose-600 font-bold hover:underline flex items-center justify-center sm:justify-start gap-1 mt-1 cursor-pointer"
+                className="text-xs text-[#0284C7] font-bold hover:underline flex items-center justify-center sm:justify-start gap-1 mt-1 cursor-pointer"
               >
                 <Upload className="w-3.5 h-3.5" /> Upload / Change Profile Picture
               </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-full border border-slate-200">
             <button
               onClick={() => setActiveTab('profile')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'profile'
-                  ? 'bg-white text-rose-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                  : 'text-[#475569] hover:text-[#0F172A]'
               }`}
             >
-              <User className="w-4 h-4" /> Personal
+              <User className={`w-4 h-4 ${activeTab === 'profile' ? 'text-white' : 'text-[#475569]'}`} /> Personal
             </button>
             <button
               onClick={() => setActiveTab('settings')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'settings'
-                  ? 'bg-white text-rose-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                  : 'text-[#475569] hover:text-[#0F172A]'
               }`}
             >
-              <Sliders className="w-4 h-4" /> Settings
+              <Sliders className={`w-4 h-4 ${activeTab === 'settings' ? 'text-white' : 'text-[#475569]'}`} /> Settings
             </button>
             <button
               onClick={() => setActiveTab('security')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'security'
-                  ? 'bg-white text-rose-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                  : 'text-[#475569] hover:text-[#0F172A]'
               }`}
             >
-              <Lock className="w-4 h-4" /> Security
+              <Lock className={`w-4 h-4 ${activeTab === 'security' ? 'text-white' : 'text-[#475569]'}`} /> Security
             </button>
           </div>
         </div>
@@ -459,10 +570,18 @@ const Profile = () => {
                   type="password"
                   required
                   value={passwords.old_password}
-                  onChange={(e) => setPasswords({ ...passwords, old_password: e.target.value })}
+                  onChange={(e) => {
+                    setPasswords({ ...passwords, old_password: e.target.value });
+                    if (fieldErrors.old_password) setFieldErrors((prev) => ({ ...prev, old_password: '' }));
+                  }}
                   placeholder="Enter old password"
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:border-rose-600 focus:bg-white outline-none focus:ring-2 focus:ring-rose-500/20"
+                  className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-semibold text-slate-900 focus:bg-white outline-none transition-all ${
+                    fieldErrors.old_password
+                      ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                      : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
+                  }`}
                 />
+                <FieldError error={fieldErrors.old_password} />
               </div>
 
               <div>
@@ -473,10 +592,18 @@ const Profile = () => {
                   type="password"
                   required
                   value={passwords.new_password}
-                  onChange={(e) => setPasswords({ ...passwords, new_password: e.target.value })}
+                  onChange={(e) => {
+                    setPasswords({ ...passwords, new_password: e.target.value });
+                    if (fieldErrors.new_password) setFieldErrors((prev) => ({ ...prev, new_password: '' }));
+                  }}
                   placeholder="Enter new password"
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:border-rose-600 focus:bg-white outline-none focus:ring-2 focus:ring-rose-500/20"
+                  className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-semibold text-slate-900 focus:bg-white outline-none transition-all ${
+                    fieldErrors.new_password
+                      ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                      : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
+                  }`}
                 />
+                <FieldError error={fieldErrors.new_password} />
               </div>
 
               <button

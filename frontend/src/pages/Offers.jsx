@@ -1,61 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Tag, Sparkles, Percent, Gift, CheckCircle2, Copy,
   Calendar, ArrowRight, ShieldCheck, Hotel, Clock
 } from 'lucide-react';
+import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const Offers = () => {
   const { showToast } = useAuth();
   const [copiedCode, setCopiedCode] = useState(null);
+  const [coupons, setCoupons] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const promoOffers = [
-    {
-      id: 1,
-      code: 'WELCOME1000',
-      discount: 'Flat ₹1,000 OFF',
-      minBooking: 'Min. booking value ₹4,000',
-      title: 'First Stay Welcome Bonus',
-      description: 'Exclusive instant discount for new guests booking luxury and boutique stays across India.',
-      expiry: 'Valid till 31 Dec 2026',
-      badge: 'POPULAR',
-      color: 'from-rose-500 to-rose-700'
-    },
-    {
-      id: 2,
-      code: 'GOABEACH20',
-      discount: '20% OFF (Up to ₹2,500)',
-      minBooking: 'Valid on Goa beach resorts & villas',
-      title: 'Goa Coastal Getaways',
-      description: 'Special seasonal pricing on handpicked private villas, beachfront cottages, and heritage stays in North & South Goa.',
-      expiry: 'Valid on 2+ nights stays',
-      badge: 'BEACH SPECIAL',
-      color: 'from-teal-500 to-cyan-700'
-    },
-    {
-      id: 3,
-      code: 'ROYALSTAY15',
-      discount: '15% OFF (Up to ₹3,500)',
-      minBooking: 'Heritage & Palace stays in Rajasthan',
-      title: 'Rajasthan Royal Heritage',
-      description: 'Immerse yourself in regal splendour at verified palace hotels in Jaipur, Udaipur, and Jodhpur.',
-      expiry: 'Valid till 30 Nov 2026',
-      badge: 'HERITAGE',
-      color: 'from-amber-500 to-orange-700'
-    },
-    {
-      id: 4,
-      code: 'WEEKENDVIBES',
-      discount: 'Flat ₹750 OFF',
-      minBooking: 'Valid on Friday - Sunday check-ins',
-      title: 'Quick Weekend Escapes',
-      description: 'Spontaneous weekend trip? Enjoy flat instant discount on boutique retreats near Mumbai, Pune, and Ahmedabad.',
-      expiry: 'Refreshed every weekend',
-      badge: 'WEEKEND',
-      color: 'from-purple-500 to-indigo-700'
+  useEffect(() => {
+    fetchActiveCoupons();
+  }, []);
+
+  const fetchActiveCoupons = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/coupons/available/');
+      const list = res.data?.available_coupons || res.data?.coupons || res.data?.results || (Array.isArray(res.data) ? res.data : []);
+      // Filter only currently active coupons
+      const activeOnly = list.filter(c => c && c.is_active !== false);
+      setCoupons(activeOnly);
+    } catch (err) {
+      console.error('Failed to load coupons:', err);
+      setCoupons([]);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
   const handleCopyCode = (code) => {
     navigator.clipboard.writeText(code);
@@ -95,77 +71,114 @@ const Offers = () => {
 
       {/* OFFERS CARDS GRID */}
       <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {promoOffers.map((offer) => (
-            <div
-              key={offer.id}
-              className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
-            >
-              <div className="p-7 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-black uppercase tracking-wider border border-rose-200">
-                    {offer.badge}
-                  </span>
-                  <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" /> {offer.expiry}
-                  </span>
-                </div>
-
-                <div>
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-                    {offer.discount}
-                  </h3>
-                  <h4 className="text-sm font-extrabold text-rose-600 mt-0.5">
-                    {offer.title}
-                  </h4>
-                  <p className="text-xs text-slate-500 font-medium leading-relaxed mt-2">
-                    {offer.description}
-                  </p>
-                  <p className="text-[11px] font-bold text-slate-400 mt-1">
-                    • {offer.minBooking}
-                  </p>
-                </div>
-              </div>
-
-              {/* Coupon Code Pill Bar */}
-              <div className="px-7 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <Tag className="w-4 h-4 text-rose-600" />
-                  <span className="font-mono text-sm font-black text-slate-800 tracking-wider">
-                    {offer.code}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleCopyCode(offer.code)}
-                    className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-500 text-slate-700 hover:text-rose-600 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    {copiedCode === offer.code ? (
-                      <>
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Copy Code</span>
-                      </>
-                    )}
-                  </button>
-
-                  <Link
-                    to="/search"
-                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Use Code</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </Link>
-                </div>
-              </div>
+        {loading ? (
+          <div className="py-20 text-center space-y-3">
+            <div className="w-8 h-8 border-4 border-rose-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <p className="text-xs font-bold text-slate-500">Loading active offers...</p>
+          </div>
+        ) : coupons.length === 0 ? (
+          <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center max-w-md mx-auto space-y-3 shadow-sm">
+            <Tag className="w-12 h-12 text-slate-300 mx-auto" />
+            <h3 className="text-lg font-black text-slate-900">No Active Promotional Offers</h3>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              There are no active public coupon codes available at the moment. Please check back soon or browse verified stays.
+            </p>
+            <div className="pt-2">
+              <Link to="/search" className="btn-primary py-2.5 px-6 text-xs font-bold inline-flex">
+                Browse All Hotels
+              </Link>
             </div>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {coupons.map((offer) => {
+              const discountText = offer.discount_percentage
+                ? `${parseFloat(offer.discount_percentage)}% OFF${offer.max_discount_amount ? ` (Up to ₹${parseFloat(offer.max_discount_amount).toLocaleString('en-IN')})` : ''}`
+                : offer.discount_amount
+                ? `Flat ₹${parseFloat(offer.discount_amount).toLocaleString('en-IN')} OFF`
+                : 'Special Offer';
+
+              const minBookingText = offer.min_booking_amount && parseFloat(offer.min_booking_amount) > 0
+                ? `Min. booking value ₹${parseFloat(offer.min_booking_amount).toLocaleString('en-IN')}`
+                : 'No minimum booking amount';
+
+              const expiryText = offer.valid_dates_label
+                || (offer.valid_until ? `Valid till ${new Date(offer.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : 'Active Offer');
+
+              return (
+                <div
+                  key={offer.id || offer.code}
+                  className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
+                >
+                  <div className="p-7 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-black uppercase tracking-wider border border-rose-200">
+                        {offer.campaign_badge || 'ACTIVE OFFER'}
+                      </span>
+                      <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" /> {expiryText}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                        {discountText}
+                      </h3>
+                      <h4 className="text-sm font-extrabold text-rose-600 mt-0.5">
+                        {offer.title || offer.campaign_name || offer.code}
+                      </h4>
+                      {offer.description && (
+                        <p className="text-xs text-slate-500 font-medium leading-relaxed mt-2">
+                          {offer.description}
+                        </p>
+                      )}
+                      <p className="text-[11px] font-bold text-slate-400 mt-1">
+                        • {minBookingText}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Coupon Code Pill Bar */}
+                  <div className="px-7 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-rose-600" />
+                      <span className="font-mono text-sm font-black text-slate-800 tracking-wider">
+                        {offer.code}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleCopyCode(offer.code)}
+                        className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-rose-500 text-slate-700 hover:text-rose-600 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {copiedCode === offer.code ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-700">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Copy Code</span>
+                          </>
+                        )}
+                      </button>
+
+                      <Link
+                        to="/search"
+                        className="btn-primary py-2 px-4 text-xs font-extrabold flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Use Code</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
     </div>

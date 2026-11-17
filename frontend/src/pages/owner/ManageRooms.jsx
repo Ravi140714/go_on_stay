@@ -53,7 +53,7 @@ const ManageRooms = () => {
   };
 
   return (
-    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-slate-50 text-slate-900">
+    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Header */}
@@ -75,9 +75,11 @@ const ManageRooms = () => {
 
           <Link
             to={`/owner/hotels/${hotelId}/rooms/new`}
-            className="btn-teal text-sm py-3 px-5 shadow-lg shadow-teal-600/30"
+            style={{ color: '#ffffff', display: 'inline-flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}
+            className="bg-[#0284C7] hover:bg-[#0369A1] text-white !text-white font-black text-sm py-2.5 px-5 rounded-full shadow-[0_4px_12px_rgba(2,132,199,0.25)] inline-flex flex-row items-center justify-center gap-2 transition-all whitespace-nowrap shrink-0 leading-none"
           >
-            <Plus className="w-4 h-4 stroke-[3]" /> Add Room Category
+            <Plus className="w-4 h-4 stroke-[3] text-white shrink-0" style={{ display: 'inline-block', flexShrink: 0 }} />
+            <span className="text-white !text-white font-black whitespace-nowrap" style={{ color: '#ffffff', whiteSpace: 'nowrap' }}>Add Room Category</span>
           </Link>
         </div>
 
@@ -96,9 +98,11 @@ const ManageRooms = () => {
             </p>
             <Link
               to={`/owner/hotels/${hotelId}/rooms/new`}
-              className="btn-teal py-2.5 px-6 text-xs font-bold inline-flex"
+              style={{ color: '#ffffff', display: 'inline-flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}
+              className="bg-[#0284C7] hover:bg-[#0369A1] text-white !text-white font-black text-xs py-2.5 px-6 rounded-full shadow-[0_4px_12px_rgba(2,132,199,0.25)] inline-flex flex-row items-center justify-center gap-2 transition-all whitespace-nowrap leading-none"
             >
-              <Plus className="w-4 h-4" /> Add First Room Category
+              <Plus className="w-4 h-4 stroke-[3] text-white shrink-0" style={{ display: 'inline-block', flexShrink: 0 }} />
+              <span className="text-white !text-white font-black whitespace-nowrap" style={{ color: '#ffffff', whiteSpace: 'nowrap' }}>Add First Room Category</span>
             </Link>
           </div>
         ) : (

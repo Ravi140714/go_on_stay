@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Calendar, Users, Building2, ShieldCheck, Tag,
-  ArrowLeft, User, Mail, Phone, KeyRound, CheckCircle2, Lock, Utensils, Clock, Sparkles
+  ArrowLeft, User, Mail, Phone, KeyRound, CheckCircle2, Lock, Utensils, Clock, Sparkles, MapPin, Star
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { formatDisplayDate } from '../utils/dateUtils';
+import { parseApiError } from '../utils/errorHandler';
+import FieldError from '../components/FieldError';
 
 const BookingPage = () => {
   const [searchParams] = useSearchParams();
@@ -51,6 +53,7 @@ const BookingPage = () => {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponLoading, setCouponLoading] = useState(false);
   const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
     fetchAvailableCoupons();
@@ -218,8 +221,16 @@ const BookingPage = () => {
 
   const handleCreatePendingBooking = async (e) => {
     e.preventDefault();
-    if (!guestName || !guestEmail || !guestPhone) {
-      showToast('Please fill in all guest contact details.', 'error');
+    setFieldErrors({});
+
+    const newErrors = {};
+    if (!guestName.trim()) newErrors.guest_name = 'Please enter guest full name.';
+    if (!guestEmail.trim()) newErrors.guest_email = 'Please enter email address for booking voucher.';
+    if (!guestPhone.trim()) newErrors.guest_phone = 'Please enter mobile number for check-in alerts.';
+
+    if (Object.keys(newErrors).length > 0) {
+      setFieldErrors(newErrors);
+      showToast('Please fill in all required guest contact details.', 'error');
       return;
     }
 
@@ -247,9 +258,9 @@ const BookingPage = () => {
         check_out: checkOut,
         number_of_guests: guestsCount,
         number_of_rooms: roomsCount,
-        guest_name: guestName,
-        guest_email: guestEmail,
-        guest_phone: guestPhone,
+        guest_name: guestName.trim(),
+        guest_email: guestEmail.trim(),
+        guest_phone: guestPhone.trim(),
         meal_plan: selectedMealPlan,
         estimated_arrival_time: estimatedArrivalTime,
         special_requests: specialRequests,
@@ -262,20 +273,10 @@ const BookingPage = () => {
       showToast(`Reservation ${createdBooking.booking_id} (${selectedRoomNumbers.join(', ')}) initiated. Proceeding to payment...`);
       navigate(`/payment?booking_id=${createdBooking.booking_id}`);
     } catch (err) {
-      console.error('Booking creation error:', err.response?.data || err.message);
-      const data = err.response?.data;
-      // Extract exact backend validation error message
-      let msg = 'Failed to initiate booking reservation.';
-      if (data) {
-        if (data.error) msg = data.error;
-        else if (data.room) msg = Array.isArray(data.room) ? data.room[0] : data.room;
-        else if (data.room_number) msg = Array.isArray(data.room_number) ? data.room_number[0] : data.room_number;
-        else if (data.check_out) msg = Array.isArray(data.check_out) ? data.check_out[0] : data.check_out;
-        else if (data.non_field_errors) msg = Array.isArray(data.non_field_errors) ? data.non_field_errors[0] : data.non_field_errors;
-        else if (typeof data === 'string') msg = data;
-        else msg = JSON.stringify(data);
-      }
-      showToast(msg, 'error');
+      console.error('Booking creation error:', err);
+      const parsed = parseApiError(err, 'Failed to initiate booking reservation.');
+      setFieldErrors(parsed.fieldErrors);
+      showToast(parsed.message, 'error');
     } finally {
       setCreatingBooking(false);
     }
@@ -308,7 +309,7 @@ const BookingPage = () => {
   }
 
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen pb-16">
+    <div className="min-h-screen pb-16 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
       
       {/* Top Header */}
       <div className="bg-[#d5e7f5]/80 backdrop-blur-md border-b border-sky-200/60 py-4 px-4 sm:px-6 lg:px-8">
@@ -334,7 +335,7 @@ const BookingPage = () => {
           </p>
         </div>
 
-        <form onSubmit={handleCreatePendingBooking} className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <form onSubmit={handleCreatePendingBooking} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* Main Column: Stay Summary, Room Number Picker, Meal Plan, Arrival Time, Guest Details */}
           <div className="lg:col-span-8 space-y-6">
@@ -345,11 +346,46 @@ const BookingPage = () => {
                 <Building2 className="w-5 h-5 text-teal-600" /> Stay Summary
               </h2>
 
-              <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-xl font-black text-slate-900">{hotel?.name}</h3>
-                  <p className="text-xs font-bold text-slate-500">{hotel?.address}, {hotel?.city}</p>
-                  <p className="text-xs font-bold text-teal-600 mt-1">{room?.title} ({room?.bed_type})</p>
+              <div className="flex flex-col sm:flex-row items-start gap-4">
+                {/* Hotel Photo */}
+                <img
+                  src={hotel?.primary_image || (hotel?.images && hotel.images[0]?.display_url) || (hotel?.images && hotel.images[0]?.image) || hotel?.cover_image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80'}
+                  alt={hotel?.name || 'Hotel'}
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
+                  }}
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover shrink-0 border border-slate-200/90 shadow-sm"
+                />
+
+                {/* Hotel Details matching property info */}
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  {/* Rating & Property Type Badge */}
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700">
+                    <span className="flex items-center gap-0.5 text-amber-500 font-black">
+                      {hotel?.star_rating || 5} <Star className="w-3 h-3 fill-amber-500 text-amber-500 inline" />
+                    </span>
+                    <span className="text-slate-300">•</span>
+                    <span className="capitalize">{hotel?.property_type ? hotel.property_type.toLowerCase() : 'Hotel'}</span>
+                  </div>
+
+                  {/* Hotel Name */}
+                  <h3 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">{hotel?.name}</h3>
+
+                  {/* Address with MapPin */}
+                  <div className="flex items-start gap-1.5 text-xs text-slate-600 font-medium">
+                    <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                    <span>
+                      {[hotel?.address, hotel?.area, hotel?.city, hotel?.state, hotel?.zip_code].filter(Boolean).join(', ') || hotel?.city || 'Address details available at check-in'}
+                    </span>
+                  </div>
+
+                  {/* Room Category */}
+                  {room?.title && (
+                    <p className="text-xs font-bold text-teal-700 mt-1">
+                      {room.title} {room?.bed_type ? `(${room.bed_type})` : ''}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -483,10 +519,18 @@ const BookingPage = () => {
                     type="text"
                     required
                     value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
+                    onChange={(e) => {
+                      setGuestName(e.target.value);
+                      if (fieldErrors.guest_name) setFieldErrors((prev) => ({ ...prev, guest_name: '' }));
+                    }}
                     placeholder="Full Name"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
+                    className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-semibold focus:bg-white outline-none ${
+                      fieldErrors.guest_name
+                        ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                        : 'border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20'
+                    }`}
                   />
+                  <FieldError error={fieldErrors.guest_name} />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -498,10 +542,18 @@ const BookingPage = () => {
                       type="email"
                       required
                       value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
+                      onChange={(e) => {
+                        setGuestEmail(e.target.value);
+                        if (fieldErrors.guest_email) setFieldErrors((prev) => ({ ...prev, guest_email: '' }));
+                      }}
                       placeholder="name@example.com"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
+                      className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-semibold focus:bg-white outline-none ${
+                        fieldErrors.guest_email
+                          ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                          : 'border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20'
+                      }`}
                     />
+                    <FieldError error={fieldErrors.guest_email} />
                   </div>
 
                   <div>
@@ -512,12 +564,27 @@ const BookingPage = () => {
                       type="tel"
                       required
                       value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
+                      onChange={(e) => {
+                        setGuestPhone(e.target.value);
+                        if (fieldErrors.guest_phone) setFieldErrors((prev) => ({ ...prev, guest_phone: '' }));
+                      }}
                       placeholder="9876543210"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
+                      className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-semibold focus:bg-white outline-none ${
+                        fieldErrors.guest_phone
+                          ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                          : 'border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20'
+                      }`}
                     />
+                    <FieldError error={fieldErrors.guest_phone} />
                   </div>
                 </div>
+
+                {/* Room Availability / Date Error Banner if applicable */}
+                {(fieldErrors.room || fieldErrors.check_out || fieldErrors.check_in) && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-bold flex items-center gap-2 animate-fade-in">
+                    <FieldError error={fieldErrors.room || fieldErrors.check_out || fieldErrors.check_in} />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
@@ -536,8 +603,8 @@ const BookingPage = () => {
 
           </div>
 
-          {/* Right Column: Pricing Breakdown & Payment Trigger */}
-          <div className="lg:col-span-4 space-y-6">
+          {/* Right Column: Pricing Breakdown & Payment Trigger (Sticky Sidebar) */}
+          <div className="lg:col-span-4 lg:sticky lg:top-24 space-y-6 max-h-[calc(100vh-7rem)] overflow-y-auto pr-1">
 
             {/* Promo Code Card */}
             <div className="card-white p-5 border border-slate-200/90 shadow-xs space-y-3.5 rounded-2xl">

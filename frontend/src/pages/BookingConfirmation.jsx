@@ -117,7 +117,7 @@ const BookingConfirmation = () => {
   }
 
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen py-10 px-4 sm:px-6 lg:px-8 print:bg-white print:py-0 print:px-0">
+    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900 print:bg-white print:py-0 print:px-0">
       <div className="max-w-3xl mx-auto space-y-8 print:max-w-none">
         
         {/* Navigation & Action Bar (Hidden when printing) */}

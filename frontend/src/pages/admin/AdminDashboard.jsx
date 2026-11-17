@@ -5,7 +5,7 @@ import {
   ShieldCheck, Lock, Unlock, CheckCircle, CheckCircle2, XCircle, Search, RefreshCw, CreditCard, RotateCcw,
   Tag, Star, Download, Plus, Trash2, Filter, AlertCircle, Ban, Check, UserCheck, Shield,
   Layers, ArrowUpRight, ChevronRight, ChevronLeft, Activity, Sliders, CheckSquare, Sparkles, UserPlus, Menu,
-  Landmark, Clock, FileText, ExternalLink, HelpCircle, AlertTriangle, Eye, ShieldAlert, Wallet, Bell
+  Landmark, Clock, FileText, ExternalLink, HelpCircle, AlertTriangle, Eye, ShieldAlert, Wallet, Bell, MessageSquare
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -13,6 +13,7 @@ import { formatDisplayDate } from '../../utils/dateUtils';
 import Sidebar from '../../components/Sidebar';
 import NotificationBell from '../../components/NotificationBell';
 import Pagination from '../../components/Pagination';
+import SupportTicketsManagement from '../../components/SupportTicketsManagement';
 
 const TAB_TO_SLUG = {
   OVERVIEW: 'overview',
@@ -23,6 +24,7 @@ const TAB_TO_SLUG = {
   REFUNDS: 'refunds',
   PAYMENTS: 'payments',
   COUPONS: 'coupons',
+  TICKETS: 'tickets',
 };
 
 const SLUG_TO_TAB = {
@@ -42,6 +44,8 @@ const SLUG_TO_TAB = {
   payments: 'PAYMENTS',
   coupons: 'COUPONS',
   promos: 'COUPONS',
+  tickets: 'TICKETS',
+  support: 'TICKETS',
 };
 
 const AdminDashboard = () => {
@@ -1989,6 +1993,7 @@ const AdminDashboard = () => {
         { id: 'HOTELS', label: 'Hotels & Properties', icon: Building2, badge: hotelsList.length },
         { id: 'USERS', label: 'Users & Roles', icon: Users, badge: usersList.length },
         { id: 'BOOKINGS', label: 'Reservations & Stays', icon: CalendarCheck, badge: bookingsList.length },
+        { id: 'TICKETS', label: 'Support Tickets', icon: MessageSquare, badge: 'Desk' },
       ]
     },
     {
@@ -2014,7 +2019,7 @@ const AdminDashboard = () => {
   };
 
   return (
-    <div className="bg-[#F4F6F9] text-slate-900 min-h-screen flex font-sans select-none [&_input]:select-text [&_textarea]:select-text selection:bg-transparent selection:text-inherit min-w-[1280px]">
+    <div className="bg-[#F4F6F9] text-slate-900 min-h-screen flex font-sans select-none [&_input]:select-text [&_textarea]:select-text selection:bg-transparent selection:text-inherit">
       
       {/* Permanent Desktop Sidebar */}
       <Sidebar
@@ -2029,7 +2034,7 @@ const AdminDashboard = () => {
       />
 
       {/* Main Desktop Content Workspace */}
-      <div className="flex-1 min-w-0 flex flex-col min-h-screen pb-16 overflow-y-auto bg-[#F4F6F9]">
+      <div className="flex-1 min-w-0 flex flex-col bg-[#F4F6F9]">
         
         {/* Top Desktop Sticky Header */}
         <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-8 py-3.5 flex items-center justify-between gap-4 shadow-xs">
@@ -2044,7 +2049,8 @@ const AdminDashboard = () => {
                    activeTab === 'BOOKINGS' ? 'Reservations & Stays Register' :
                    activeTab === 'SETTLEMENTS' ? 'Host Settlements & Escrow Management' :
                    activeTab === 'REFUNDS' ? 'Customer Cancellation & Refund Processing' :
-                   activeTab === 'PAYMENTS' ? 'Razorpay Payments Ledger' : 'Promo & Discount Coupons'}
+                   activeTab === 'PAYMENTS' ? 'Razorpay Payments Ledger' :
+                   activeTab === 'TICKETS' ? 'Guest & Owner Support Desk' : 'Promo & Discount Coupons'}
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-300 font-bold shadow-xs">
                   {activeTab}
@@ -2092,7 +2098,7 @@ const AdminDashboard = () => {
         </header>
 
         {/* Main Body Content */}
-        <main className="max-w-7xl mx-auto w-full px-8 pt-6 space-y-7 flex-1 bg-[#F4F6F9]">
+        <main className="max-w-7xl mx-auto w-full px-4 sm:px-8 pt-6 pb-6 space-y-7 flex-1 bg-[#F4F6F9]">
 
         {/* Payout Day Alert Banner: Only shows when a host has an actual mature payout due (> ₹0.00) */}
         {(activeTab === 'OVERVIEW' || activeTab === 'SETTLEMENTS') && liveEligibleCount > 0 && liveEligibleTotal > 0 && (
@@ -4532,6 +4538,15 @@ const AdminDashboard = () => {
             />
           </div>
           </div>
+        )}
+
+        {/* Tab: Support Tickets Management */}
+        {activeTab === 'TICKETS' && (
+          <SupportTicketsManagement
+            usersList={usersList}
+            hotelsList={hotelsList}
+            bookingsList={bookingsList}
+          />
         )}
 
       </main>

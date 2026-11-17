@@ -53,16 +53,18 @@ const HotelDetails = () => {
   const [isSavedWishlist, setIsSavedWishlist] = useState(false);
 
   useEffect(() => {
-    if (user && id) {
+    if (user?.id && id) {
       checkWishlistStatus();
+    } else {
+      setIsSavedWishlist(false);
     }
-  }, [user, id]);
+  }, [user?.id, id]);
 
   const checkWishlistStatus = async () => {
     try {
       const res = await api.get('/wishlist/');
-      const list = res.data.results || res.data;
-      const isSaved = list.some((item) => item.hotel === parseInt(id));
+      const list = res.data?.results || (Array.isArray(res.data) ? res.data : []);
+      const isSaved = list.some((item) => (typeof item === 'object' && item !== null ? item.hotel === parseInt(id) : item === parseInt(id)));
       setIsSavedWishlist(isSaved);
     } catch (err) {
       console.error('Failed to check wishlist status:', err);
@@ -94,9 +96,11 @@ const HotelDetails = () => {
     fetchHotelReviews();
   }, [id]);
 
+  const searchParamsString = searchParams.toString();
+
   useEffect(() => {
     fetchAvailableRooms();
-  }, [id, searchParams]);
+  }, [id, searchParamsString]);
 
   const saveRecentlyViewed = (hotelData) => {
     try {

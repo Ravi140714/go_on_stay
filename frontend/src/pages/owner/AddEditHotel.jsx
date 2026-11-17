@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Building2, MapPin, Star, Clock, ShieldCheck, Plus, ArrowLeft, Upload, Image as ImageIcon, X, CheckCircle2 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { parseApiError } from '../../utils/errorHandler';
+import FieldError from '../../components/FieldError';
 
 const AddEditHotel = () => {
   const { id } = useParams();
@@ -39,6 +41,7 @@ const AddEditHotel = () => {
 
   const [amenitiesList, setAmenitiesList] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
     fetchAmenities();
@@ -84,7 +87,11 @@ const AddEditHotel = () => {
   };
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => ({ ...prev, [name]: '' }));
+    }
   };
 
   const handleAmenityToggle = (amenityId) => {
@@ -166,26 +173,16 @@ const AddEditHotel = () => {
       navigate('/owner/dashboard');
     } catch (err) {
       console.error('Hotel save error:', err);
-      let errMsg = 'Failed to save hotel details.';
-      if (err.response?.data) {
-        const data = err.response.data;
-        if (typeof data === 'string') errMsg = data;
-        else if (typeof data === 'object') {
-          const keys = Object.keys(data);
-          if (keys.length > 0) {
-            const val = data[keys[0]];
-            errMsg = `${keys[0]}: ${Array.isArray(val) ? val[0] : val}`;
-          }
-        }
-      }
-      showToast(errMsg, 'error');
+      const parsed = parseApiError(err, 'Failed to save hotel details.');
+      setFieldErrors(parsed.fieldErrors);
+      showToast(parsed.message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-slate-50 text-slate-900">
+    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
       <div className="max-w-4xl mx-auto space-y-8">
         
         {/* Navigation back */}
@@ -261,8 +258,13 @@ const AddEditHotel = () => {
                     ? 'e.g. Goa Palms Beach Resort & Spa'
                     : 'e.g. The Grand Royal Palace & Resort'
                 }
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:border-teal-600 focus:bg-white outline-none focus:ring-2 focus:ring-teal-500/20"
+                className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-semibold focus:bg-white outline-none ${
+                  fieldErrors.name
+                    ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                    : 'border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20'
+                }`}
               />
+              <FieldError error={fieldErrors.name} />
             </div>
 
             {/* Star Rating */}

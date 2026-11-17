@@ -71,4 +71,29 @@ api.interceptors.response.use(
   }
 );
 
+// Map to track in-flight GET requests and deduplicate identical concurrent calls
+// Eliminates duplicate requests caused by React StrictMode double-mounting or concurrent component renders
+const inFlightGetRequests = new Map();
+
+const originalGet = api.get.bind(api);
+api.get = function (url, config) {
+  if (config?.skipDedupe) {
+    return originalGet(url, config);
+  }
+
+  const serializedParams = config?.params ? JSON.stringify(config.params) : '';
+  const requestKey = `${url}::${serializedParams}`;
+
+  if (inFlightGetRequests.has(requestKey)) {
+    return inFlightGetRequests.get(requestKey);
+  }
+
+  const promise = originalGet(url, config).finally(() => {
+    inFlightGetRequests.delete(requestKey);
+  });
+
+  inFlightGetRequests.set(requestKey, promise);
+  return promise;
+};
+
 export default api;

@@ -38,13 +38,14 @@ const Pagination = ({
   };
 
   const activeColorClasses = {
-    gold: 'bg-gradient-to-r from-[#BF8E36] via-[#D8A74B] to-[#BF8E36] text-white font-black shadow-sm border-none',
-    teal: 'bg-teal-600 text-white shadow-xs',
-    rose: 'bg-rose-600 text-white shadow-xs',
-    emerald: 'bg-emerald-600 text-white shadow-xs',
-    amber: 'bg-amber-500 text-white shadow-xs',
-    indigo: 'bg-indigo-600 text-white shadow-xs',
-  }[color] || (isLuxury ? 'bg-gradient-to-r from-[#BF8E36] via-[#D8A74B] to-[#BF8E36] text-white font-black' : 'bg-teal-600 text-white');
+    gold: 'bg-gradient-to-r from-[#BF8E36] via-[#D8A74B] to-[#BF8E36] text-white font-black shadow-sm border-none rounded-full',
+    teal: 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)] rounded-full',
+    rose: 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)] rounded-full',
+    sky: 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)] rounded-full',
+    emerald: 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)] rounded-full',
+    amber: 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)] rounded-full',
+    indigo: 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)] rounded-full',
+  }[color] || (isLuxury ? 'bg-gradient-to-r from-[#BF8E36] via-[#D8A74B] to-[#BF8E36] text-white font-black' : 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)] rounded-full');
 
   return (
     <div
@@ -83,7 +84,7 @@ const Pagination = ({
           type="button"
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
-          className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 hover:border-slate-300 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 rounded-full border border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC] hover:text-[#0F172A] text-xs font-bold flex items-center gap-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <ChevronLeft className="w-3.5 h-3.5" /> Prev
         </button>
@@ -104,10 +105,10 @@ const Pagination = ({
                 key={page}
                 type="button"
                 onClick={() => onPageChange(page)}
-                className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`min-w-[32px] h-8 px-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   isActive
                     ? activeColorClasses
-                    : 'border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 hover:border-slate-300'
+                    : 'border border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
                 }`}
               >
                 {page}
@@ -121,7 +122,7 @@ const Pagination = ({
           type="button"
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage === totalPages}
-          className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 hover:border-slate-300 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 rounded-full border border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC] hover:text-[#0F172A] text-xs font-bold flex items-center gap-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
         >
           Next <ChevronRight className="w-3.5 h-3.5" />
         </button>
@@ -131,7 +132,7 @@ const Pagination = ({
           type="button"
           onClick={() => onPageChange(totalPages)}
           disabled={currentPage === totalPages}
-          className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 text-xs transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-1.5 rounded-full border border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC] hover:text-[#0F172A] text-xs transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
           title="Last Page"
         >
           <ChevronsRight className="w-4 h-4" />

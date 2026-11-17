@@ -13,7 +13,7 @@ import HotelMapView from '../components/HotelMapView';
 import CategoryTabs from '../components/CategoryTabs';
 import Pagination from '../components/Pagination';
 
-const availableAmenities = [
+const defaultAmenities = [
   'Free High-Speed Wi-Fi',
   'Swimming Pool',
   'Complimentary Breakfast',
@@ -190,6 +190,22 @@ const calculateHotelMatchScore = (hotel, query) => {
   return matchedTokens > 0 ? score : 0;
 };
 
+// Module-level in-flight request deduplication and caching
+// Guarantees strictly 1 single network request per API even under React StrictMode double-mounting
+let cachedCities = null;
+let inFlightCitiesPromise = null;
+
+let cachedAmenities = null;
+let inFlightAmenitiesPromise = null;
+
+let cachedWishlist = { userId: null, list: null, timestamp: 0 };
+let inFlightWishlistPromise = null;
+
+let inFlightHotelsKey = null;
+let inFlightHotelsPromise = null;
+let lastHotelsKey = null;
+let lastHotelsData = null;
+
 const HotelSearch = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -198,23 +214,125 @@ const HotelSearch = () => {
   const getTodayStr = () => new Date().toISOString().split('T')[0];
   const getTomorrowStr = () => new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-  // Dynamic Cities from API
-  const [activeCities, setActiveCities] = useState([]);
+  // Dynamic Cities & Amenities from API (initialized from cache if available)
+  const [activeCities, setActiveCities] = useState(() => {
+    if (cachedCities && cachedCities.length > 0) return cachedCities;
+    try {
+      const saved = sessionStorage.getItem('bmr_cached_active_cities');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cachedCities = parsed;
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  const [backendAmenities, setBackendAmenities] = useState(() => {
+    if (cachedAmenities && cachedAmenities.length > 0) return cachedAmenities;
+    try {
+      const saved = sessionStorage.getItem('bmr_cached_amenities');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cachedAmenities = parsed;
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
 
   useEffect(() => {
     fetchCities();
+    fetchAmenities();
   }, []);
 
   const fetchCities = async () => {
-    try {
-      const res = await api.get('/hotels/cities/');
-      if (Array.isArray(res.data)) {
-        setActiveCities(res.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch active hotel cities:', err);
+    if (cachedCities && cachedCities.length > 0) {
+      setActiveCities(cachedCities);
+      return;
     }
+    if (inFlightCitiesPromise) {
+      try {
+        const data = await inFlightCitiesPromise;
+        if (data && data.length > 0) setActiveCities(data);
+      } catch (e) {}
+      return;
+    }
+    inFlightCitiesPromise = api.get('/hotels/cities/')
+      .then((res) => {
+        const list = Array.isArray(res.data) ? res.data : [];
+        if (list.length > 0) {
+          cachedCities = list;
+          try {
+            sessionStorage.setItem('bmr_cached_active_cities', JSON.stringify(list));
+          } catch (e) {}
+        }
+        return list;
+      })
+      .catch((err) => {
+        console.error('Failed to fetch active hotel cities:', err);
+        return [];
+      })
+      .finally(() => {
+        inFlightCitiesPromise = null;
+      });
+
+    try {
+      const data = await inFlightCitiesPromise;
+      if (data && data.length > 0) {
+        setActiveCities(data);
+      }
+    } catch (e) {}
   };
+
+  const fetchAmenities = async () => {
+    if (cachedAmenities && cachedAmenities.length > 0) {
+      setBackendAmenities(cachedAmenities);
+      return;
+    }
+    if (inFlightAmenitiesPromise) {
+      try {
+        const list = await inFlightAmenitiesPromise;
+        if (list && list.length > 0) setBackendAmenities(list);
+      } catch (e) {}
+      return;
+    }
+    inFlightAmenitiesPromise = api.get('/hotels/amenities/')
+      .then((res) => {
+        const list = res.data?.results || (Array.isArray(res.data) ? res.data : []);
+        if (list.length > 0) {
+          const parsed = list.map((a) => (typeof a === 'string' ? a : a.name)).filter(Boolean);
+          if (parsed.length > 0) {
+            cachedAmenities = parsed;
+            try {
+              sessionStorage.setItem('bmr_cached_amenities', JSON.stringify(parsed));
+            } catch (e) {}
+            return parsed;
+          }
+        }
+        return [];
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch backend amenities:', err);
+        return [];
+      })
+      .finally(() => {
+        inFlightAmenitiesPromise = null;
+      });
+
+    try {
+      const list = await inFlightAmenitiesPromise;
+      if (list && list.length > 0) {
+        setBackendAmenities(list);
+      }
+    } catch (e) {}
+  };
+
+  const availableAmenities = backendAmenities.length > 0 ? backendAmenities : defaultAmenities;
 
   const quickCities = [
     { name: 'All Cities', value: '' },
@@ -253,24 +371,64 @@ const HotelSearch = () => {
   }, [searchCityInput, priceMax, selectedStars, freeCancellation, breakfastIncluded, selectedAmenities, sortBy, searchParams]);
 
   // Wishlist State & Handlers
-  const [userWishlist, setUserWishlist] = useState([]);
+  const [userWishlist, setUserWishlist] = useState(() => {
+    if (user?.id && cachedWishlist.userId === user?.id && cachedWishlist.list) {
+      return cachedWishlist.list;
+    }
+    return [];
+  });
 
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       fetchWishlist();
     } else {
       setUserWishlist([]);
+      cachedWishlist = { userId: null, list: null, timestamp: 0 };
     }
-  }, [user]);
+  }, [user?.id]);
 
   const fetchWishlist = async () => {
-    try {
-      const res = await api.get('/wishlist/');
-      const list = res.data.results || res.data;
-      setUserWishlist(list.map((item) => item.hotel));
-    } catch (err) {
-      console.error('Failed to load user wishlist:', err);
+    const currentUserId = user?.id;
+    if (!currentUserId) return;
+
+    if (cachedWishlist.userId === currentUserId && cachedWishlist.list && (Date.now() - cachedWishlist.timestamp < 30000)) {
+      setUserWishlist(cachedWishlist.list);
+      return;
     }
+
+    if (inFlightWishlistPromise) {
+      try {
+        const list = await inFlightWishlistPromise;
+        if (list) setUserWishlist(list);
+      } catch (e) {}
+      return;
+    }
+
+    inFlightWishlistPromise = api.get('/wishlist/')
+      .then((res) => {
+        const rawList = res.data?.results || (Array.isArray(res.data) ? res.data : []);
+        const ids = rawList.map((item) => (typeof item === 'object' && item !== null ? item.hotel : item)).filter(Boolean);
+        cachedWishlist = {
+          userId: currentUserId,
+          list: ids,
+          timestamp: Date.now()
+        };
+        return ids;
+      })
+      .catch((err) => {
+        console.error('Failed to load user wishlist:', err);
+        return [];
+      })
+      .finally(() => {
+        inFlightWishlistPromise = null;
+      });
+
+    try {
+      const list = await inFlightWishlistPromise;
+      if (list) {
+        setUserWishlist(list);
+      }
+    } catch (e) {}
   };
 
   const handleToggleWishlist = async (e, hotel) => {
@@ -284,10 +442,18 @@ const HotelSearch = () => {
     try {
       const res = await api.post(`/wishlist/toggle/${hotel.id}/`);
       if (res.data.is_favorited) {
-        setUserWishlist((prev) => [...prev, hotel.id]);
+        setUserWishlist((prev) => {
+          const next = [...prev, hotel.id];
+          cachedWishlist = { userId: user?.id, list: next, timestamp: Date.now() };
+          return next;
+        });
         showToast(`Saved "${hotel.name}" to your wishlist! ❤️`);
       } else {
-        setUserWishlist((prev) => prev.filter((id) => id !== hotel.id));
+        setUserWishlist((prev) => {
+          const next = prev.filter((id) => id !== hotel.id);
+          cachedWishlist = { userId: user?.id, list: next, timestamp: Date.now() };
+          return next;
+        });
         showToast(`Removed "${hotel.name}" from your wishlist.`);
       }
     } catch (err) {
@@ -300,31 +466,67 @@ const HotelSearch = () => {
     setSearchCityInput(qCityParam || qSearchParam);
   }, [qCityParam, qSearchParam]);
 
+  // Serialized search parameters to avoid re-running when string has not changed
+  const searchParamsString = searchParams.toString();
+
   // Fetch hotels whenever URL parameters change
   useEffect(() => {
     fetchHotels();
-  }, [searchParams]);
+  }, [searchParamsString]);
 
   const fetchHotels = async () => {
-    setLoading(true);
-    try {
-      const activeCity = searchParams.get('city') || '';
-      const activeQuery = searchParams.get('search') || searchParams.get('query') || '';
-      const activePropType = searchParams.get('property_type') || '';
-      
-      const queryParams = new URLSearchParams();
-      if (activeCity) queryParams.append('city', activeCity);
-      if (activeQuery) queryParams.append('search', activeQuery);
-      if (activePropType) queryParams.append('property_type', activePropType);
+    const activeCity = searchParams.get('city') || '';
+    const activeQuery = searchParams.get('search') || searchParams.get('query') || '';
+    const activePropType = searchParams.get('property_type') || '';
+    
+    const queryParams = new URLSearchParams();
+    if (activeCity) queryParams.append('city', activeCity);
+    if (activeQuery) queryParams.append('search', activeQuery);
+    if (activePropType) queryParams.append('property_type', activePropType);
+    const queryString = queryParams.toString();
 
-      const res = await api.get(`/hotels/?${queryParams.toString()}`);
-      setHotels(res.data.results || res.data);
-    } catch (err) {
-      console.error('Search API error:', err);
-      showToast('Failed to fetch hotel search results.', 'error');
-    } finally {
-      setLoading(false);
+    // 1. Deduplicate identical in-flight requests (e.g. from StrictMode remount)
+    if (inFlightHotelsKey === queryString && inFlightHotelsPromise) {
+      try {
+        const data = await inFlightHotelsPromise;
+        if (data) setHotels(data);
+      } catch (err) {}
+      return;
     }
+
+    // 2. If exact query was already fetched and available, use it without re-fetching
+    if (lastHotelsKey === queryString && lastHotelsData && !inFlightHotelsPromise) {
+      setHotels(lastHotelsData);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    inFlightHotelsKey = queryString;
+    inFlightHotelsPromise = api.get(`/hotels/?${queryString}`)
+      .then((res) => {
+        const data = res.data?.results || (Array.isArray(res.data) ? res.data : []);
+        lastHotelsKey = queryString;
+        lastHotelsData = data;
+        return data;
+      })
+      .catch((err) => {
+        console.error('Search API error:', err);
+        showToast('Failed to fetch hotel search results.', 'error');
+        return [];
+      })
+      .finally(() => {
+        inFlightHotelsPromise = null;
+        inFlightHotelsKey = null;
+        setLoading(false);
+      });
+
+    try {
+      const data = await inFlightHotelsPromise;
+      if (data) {
+        setHotels(data);
+      }
+    } catch (err) {}
   };
 
   const handleCitySearchSubmit = (e) => {
@@ -526,31 +728,31 @@ const HotelSearch = () => {
             {/* View Mode Toggle, Filters, and Sort Buttons */}
             <div className="flex flex-wrap items-center gap-2.5">
               {/* View Mode Toggle: List View / Map View */}
-              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+              <div className="flex items-center bg-slate-100 p-1 rounded-full border border-slate-200 shrink-0">
                 <button
                   type="button"
                   onClick={() => setViewMode('list')}
-                  className={`py-1.5 px-3 rounded-lg font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                  className={`py-1.5 px-3 rounded-full font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
                     viewMode === 'list'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-900'
+                      ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                      : 'text-[#475569] hover:text-[#0F172A]'
                   }`}
                   title="Switch to List View"
                 >
-                  <LayoutGrid className={`w-3.5 h-3.5 ${viewMode === 'list' ? 'text-rose-600' : 'text-slate-400'}`} />
+                  <LayoutGrid className={`w-3.5 h-3.5 ${viewMode === 'list' ? 'text-white' : 'text-[#475569]'}`} />
                   <span>List View</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('map')}
-                  className={`py-1.5 px-3 rounded-lg font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                  className={`py-1.5 px-3 rounded-full font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
                     viewMode === 'map'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : 'text-slate-500 hover:text-slate-900'
+                      ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                      : 'text-[#475569] hover:text-[#0F172A]'
                   }`}
                   title="Switch to Map View"
                 >
-                  <Map className="w-3.5 h-3.5" />
+                  <Map className={`w-3.5 h-3.5 ${viewMode === 'map' ? 'text-white' : 'text-[#475569]'}`} />
                   <span>Map View</span>
                 </button>
               </div>
@@ -559,12 +761,12 @@ const HotelSearch = () => {
               <button
                 type="button"
                 onClick={() => setShowFilterModal(true)}
-                className="py-2 px-3.5 rounded-xl border border-slate-300 bg-white hover:border-rose-600 hover:text-rose-600 text-slate-900 transition-all font-black text-xs flex items-center gap-2 shadow-2xs hover:shadow-md cursor-pointer shrink-0"
+                className="py-2 px-3.5 rounded-full border border-[#E2E8F0] bg-white hover:bg-[#F8FAFC] text-[#475569] hover:text-[#0F172A] transition-all font-black text-xs flex items-center gap-2 shadow-2xs hover:shadow-xs cursor-pointer shrink-0"
               >
-                <SlidersHorizontal className="w-3.5 h-3.5 text-rose-600" />
+                <SlidersHorizontal className="w-3.5 h-3.5 text-[#0284C7]" />
                 <span>Filters</span>
                 {activeFiltersCount > 0 ? (
-                  <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center">
+                  <span className="w-5 h-5 rounded-full bg-[#0284C7] text-white text-[10px] font-black flex items-center justify-center">
                     {activeFiltersCount}
                   </span>
                 ) : (
@@ -765,28 +967,6 @@ const HotelSearch = () => {
 
       </div>
 
-      {/* Floating Bottom Pill: Airbnb-style 1-click View Switcher */}
-      {!loading && sortedHotels.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
-          <button
-            type="button"
-            onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
-            className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-5 py-3 rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all cursor-pointer border border-slate-700/80"
-          >
-            {viewMode === 'list' ? (
-              <>
-                <Map className="w-4 h-4 text-rose-400" />
-                <span>Show Map ({sortedHotels.length})</span>
-              </>
-            ) : (
-              <>
-                <LayoutGrid className="w-4 h-4 text-rose-400" />
-                <span>Show List ({sortedHotels.length})</span>
-              </>
-            )}
-          </button>
-        </div>
-      )}
 
       {/* FILTER SLIDE-OVER MODAL DRAWER */}
       {showFilterModal && (
@@ -985,7 +1165,7 @@ const HotelSearch = () => {
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="text-xs font-black text-rose-600 hover:underline px-3 py-2 cursor-pointer flex items-center gap-1"
+                className="btn-secondary px-4 py-2.5 text-xs font-black cursor-pointer flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" /> Clear All
               </button>

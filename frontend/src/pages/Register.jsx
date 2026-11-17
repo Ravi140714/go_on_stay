@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { COUNTRY_PHONE_CONFIGS } from './BecomeHost';
+import { parseRegistrationErrors } from '../utils/registrationErrors';
 
 const formatPhoneWithSpace = (rawVal, maxDigits = 10) => {
   const clean = String(rawVal || '').replace(/\D/g, '').slice(0, maxDigits);
@@ -39,8 +40,14 @@ const Register = () => {
   const [verifyingOtp, setVerifyingOtp] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [passwordConfirmError, setPasswordConfirmError] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [hasDuplicateEmail, setHasDuplicateEmail] = useState(false);
+  const [hasDuplicatePhone, setHasDuplicatePhone] = useState(false);
+  const [hasDuplicateUsername, setHasDuplicateUsername] = useState(false);
+  const [hasDuplicateAccount, setHasDuplicateAccount] = useState(false);
 
   // Country & Phone State with space formatting, search and validation
   const [selectedCountry, setSelectedCountry] = useState(COUNTRY_PHONE_CONFIGS[0]); // India (+91)
@@ -141,6 +148,7 @@ const Register = () => {
     // Do not show error while typing
     if (phoneError) {
       setPhoneError('');
+      setHasDuplicatePhone(false);
     }
   };
 
@@ -151,9 +159,13 @@ const Register = () => {
         const phoneToCheck = phoneDigits.trim();
         const phoneCheck = await api.get(`/users/check-phone/?phone=${encodeURIComponent(phoneToCheck)}`);
         if (phoneCheck.data && phoneCheck.data.exists) {
-          setPhoneError('This mobile number is already registered.');
-        } else if (phoneError === 'This mobile number is already registered.') {
+          const msg = 'An account with this mobile number already exists. Please use another number.';
+          setPhoneError(msg);
+          setHasDuplicatePhone(true);
+          setHasDuplicateAccount(true);
+        } else if (phoneError === 'An account with this mobile number already exists. Please use another number.' || phoneError === 'This mobile number is already registered.') {
           setPhoneError('');
+          setHasDuplicatePhone(false);
         }
       } catch (err) {
         console.warn('Check phone onBlur fallback:', err);
@@ -162,12 +174,21 @@ const Register = () => {
   };
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (passwordError && (e.target.name === 'password' || e.target.name === 'password_confirm')) {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (name === 'username' && usernameError) {
+      setUsernameError('');
+      setHasDuplicateUsername(false);
+    }
+    if (name === 'email' && emailError) {
+      setEmailError('');
+      setHasDuplicateEmail(false);
+    }
+    if (name === 'password' && passwordError) {
       setPasswordError('');
     }
-    if (emailError && e.target.name === 'email') {
-      setEmailError('');
+    if (name === 'password_confirm' && passwordConfirmError) {
+      setPasswordConfirmError('');
     }
   };
 
@@ -178,13 +199,16 @@ const Register = () => {
     }
 
     setEmailError('');
+    setHasDuplicateEmail(false);
     setSendingOtp(true);
     try {
       // 1. Verify email uniqueness before sending OTP
       const emailCheck = await api.get(`/users/check-email/?email=${encodeURIComponent(formData.email.trim())}`);
       if (emailCheck.data && emailCheck.data.exists) {
-        const msg = emailCheck.data.message || 'This email address is already registered.';
+        const msg = 'An account with this email address already exists. Please login or use another email.';
         setEmailError(msg);
+        setHasDuplicateEmail(true);
+        setHasDuplicateAccount(true);
         showToast(msg, 'error');
         setSendingOtp(false);
         return;
@@ -195,8 +219,10 @@ const Register = () => {
       if (phoneVal) {
         const phoneCheck = await api.get(`/users/check-phone/?phone=${encodeURIComponent(phoneVal.trim())}`);
         if (phoneCheck.data && phoneCheck.data.exists) {
-          const msg = phoneCheck.data.message || 'This mobile number is already registered.';
+          const msg = 'An account with this mobile number already exists. Please use another number.';
           setPhoneError(msg);
+          setHasDuplicatePhone(true);
+          setHasDuplicateAccount(true);
           showToast(msg, 'error');
           setSendingOtp(false);
           return;
@@ -238,6 +264,17 @@ const Register = () => {
     e.preventDefault();
     setPhoneTouched(true);
 
+    // Reset previous validation errors
+    setUsernameError('');
+    setEmailError('');
+    setPhoneError('');
+    setPasswordError('');
+    setPasswordConfirmError('');
+    setHasDuplicateEmail(false);
+    setHasDuplicatePhone(false);
+    setHasDuplicateUsername(false);
+    setHasDuplicateAccount(false);
+
     if (!formData.first_name || !formData.last_name || !formData.username || !formData.email || !formData.password || !formData.password_confirm) {
       showToast('All fields are mandatory (*). Please fill out all fields.', 'error');
       return;
@@ -248,14 +285,12 @@ const Register = () => {
       showToast(`Invalid number. Exactly ${selectedCountry.digits} digits are required for ${selectedCountry.name} (${selectedCountry.dialCode}).`, 'error');
       return;
     }
-    setPhoneError('');
 
     if (formData.password !== formData.password_confirm) {
-      setPasswordError('Password no match');
+      setPasswordConfirmError('Password no match. Please ensure both passwords match.');
       showToast('Password no match. Please ensure both passwords match.', 'error');
       return;
     }
-    setPasswordError('');
 
     if (!isOtpVerified) {
       showToast('Please verify your email address using the 6-digit OTP before registering.', 'error');
@@ -268,8 +303,11 @@ const Register = () => {
       const phoneToCheck = phoneDigits.trim();
       const phoneRes = await api.get(`/users/check-phone/?phone=${encodeURIComponent(phoneToCheck)}`);
       if (phoneRes.data && phoneRes.data.exists) {
-        setPhoneError('This mobile number is already registered.');
-        showToast('This mobile number is already registered. Please use another mobile number.', 'error');
+        const msg = 'An account with this mobile number already exists. Please use another number.';
+        setPhoneError(msg);
+        setHasDuplicatePhone(true);
+        setHasDuplicateAccount(true);
+        showToast(msg, 'error');
         setLoading(false);
         return;
       }
@@ -277,8 +315,11 @@ const Register = () => {
       // 2. Check Email Uniqueness
       const emailRes = await api.get(`/users/check-email/?email=${encodeURIComponent(formData.email.trim())}`);
       if (emailRes.data && emailRes.data.exists) {
-        setEmailError('This email address is already registered.');
-        showToast('This email address is already registered. Please sign in instead.', 'error');
+        const msg = 'An account with this email address already exists. Please login or use another email.';
+        setEmailError(msg);
+        setHasDuplicateEmail(true);
+        setHasDuplicateAccount(true);
+        showToast(msg, 'error');
         setLoading(false);
         return;
       }
@@ -287,11 +328,59 @@ const Register = () => {
       const result = await register(formData);
       if (result && result.success) {
         navigate('/');
+      } else if (result && !result.success) {
+        if (result.fieldErrors) {
+          if (result.fieldErrors.username) {
+            setUsernameError(result.fieldErrors.username);
+            if (result.isDuplicateUsername) {
+              setHasDuplicateUsername(true);
+              setHasDuplicateAccount(true);
+            }
+          }
+          if (result.fieldErrors.email) {
+            setEmailError(result.fieldErrors.email);
+            if (result.isDuplicateEmail) {
+              setHasDuplicateEmail(true);
+              setHasDuplicateAccount(true);
+            }
+          }
+          if (result.fieldErrors.phone_number) {
+            setPhoneError(result.fieldErrors.phone_number);
+            if (result.isDuplicatePhone) {
+              setHasDuplicatePhone(true);
+              setHasDuplicateAccount(true);
+            }
+          }
+          if (result.fieldErrors.password) {
+            setPasswordError(result.fieldErrors.password);
+          }
+          if (result.fieldErrors.password_confirm) {
+            setPasswordConfirmError(result.fieldErrors.password_confirm);
+          }
+        }
+        if (result.isDuplicateUser) {
+          setHasDuplicateAccount(true);
+        }
       }
     } catch (err) {
       console.error('Registration error:', err);
-      const errMsg = err.response?.data?.error || err.response?.data?.phone_number || err.response?.data?.email || 'An unexpected error occurred during registration.';
-      showToast(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg), 'error');
+      const parsed = parseRegistrationErrors(err.response?.data || err.message);
+      if (parsed.fieldErrors.username) {
+        setUsernameError(parsed.fieldErrors.username);
+        if (parsed.isDuplicateUsername) setHasDuplicateUsername(true);
+      }
+      if (parsed.fieldErrors.email) {
+        setEmailError(parsed.fieldErrors.email);
+        if (parsed.isDuplicateEmail) setHasDuplicateEmail(true);
+      }
+      if (parsed.fieldErrors.phone_number) {
+        setPhoneError(parsed.fieldErrors.phone_number);
+        if (parsed.isDuplicatePhone) setHasDuplicatePhone(true);
+      }
+      if (parsed.fieldErrors.password) setPasswordError(parsed.fieldErrors.password);
+      if (parsed.fieldErrors.password_confirm) setPasswordConfirmError(parsed.fieldErrors.password_confirm);
+      if (parsed.isDuplicateUser) setHasDuplicateAccount(true);
+      showToast(parsed.primaryMessage, 'error');
     } finally {
       setLoading(false);
     }
@@ -382,8 +471,25 @@ const Register = () => {
                   value={formData.username}
                   onChange={handleChange}
                   placeholder="Enter username"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-rose-600 focus:bg-white outline-none focus:ring-2 focus:ring-rose-500/20"
+                  className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 outline-none focus:bg-white transition-all ${
+                    usernameError
+                      ? 'border-rose-500 ring-2 ring-rose-500/20'
+                      : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
+                  }`}
                 />
+                {usernameError && (
+                  <div className="mt-1.5 flex items-start gap-1.5 text-rose-600 text-[11px] font-bold animate-fade-in">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <div className="leading-tight">
+                      <span>{usernameError}</span>
+                      {hasDuplicateUsername && (
+                        <Link to="/login" className="inline-flex items-center gap-1 ml-1 text-rose-700 underline hover:text-rose-900 font-black">
+                          Login Now <ArrowRight className="w-3 h-3" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -507,9 +613,16 @@ const Register = () => {
 
                 {/* Validation Error */}
                 {phoneError && (
-                  <div className="mt-1 flex items-center gap-1.5 text-rose-600 text-[11px] font-bold animate-fade-in">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>{phoneError}</span>
+                  <div className="mt-1.5 flex items-start gap-1.5 text-rose-600 text-[11px] font-bold animate-fade-in">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <div className="leading-tight">
+                      <span>{phoneError}</span>
+                      {(hasDuplicatePhone || phoneError.includes('already exists') || phoneError.includes('already registered')) && (
+                        <Link to="/login" className="inline-flex items-center gap-1 ml-1 text-rose-700 underline hover:text-rose-900 font-black">
+                          Login Now <ArrowRight className="w-3 h-3" />
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -565,9 +678,16 @@ const Register = () => {
               </div>
 
               {emailError && (
-                <div className="mt-1 flex items-center gap-1.5 text-rose-600 text-[11px] font-bold animate-fade-in">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{emailError}</span>
+                <div className="mt-1.5 flex items-start gap-1.5 text-rose-600 text-[11px] font-bold animate-fade-in">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <div className="leading-tight">
+                    <span>{emailError}</span>
+                    {(hasDuplicateEmail || emailError.includes('already exists') || emailError.includes('already registered')) && (
+                      <Link to="/login" className="inline-flex items-center gap-1 ml-1 text-rose-700 underline hover:text-rose-900 font-black">
+                        Login Now <ArrowRight className="w-3 h-3" />
+                      </Link>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -622,8 +742,18 @@ const Register = () => {
                   value={formData.password}
                   onChange={handleChange}
                   placeholder="••••••••••••"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-rose-600 focus:bg-white outline-none focus:ring-2 focus:ring-rose-500/20"
+                  className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 outline-none focus:bg-white transition-all ${
+                    passwordError
+                      ? 'border-rose-500 ring-2 ring-rose-500/20'
+                      : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
+                  }`}
                 />
+                {passwordError && (
+                  <div className="mt-1.5 flex items-start gap-1.5 text-rose-600 text-[11px] font-bold animate-fade-in">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span className="leading-tight">{passwordError}</span>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -638,16 +768,35 @@ const Register = () => {
                   onChange={handleChange}
                   placeholder="Re-enter password"
                   className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 outline-none focus:bg-white transition-all ${
-                    passwordError
+                    passwordConfirmError
                       ? 'border-rose-500 ring-2 ring-rose-500/20'
                       : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
                   }`}
                 />
-                {passwordError && (
-                  <p className="text-[11px] text-rose-600 font-bold mt-1 animate-fade-in">{passwordError}</p>
+                {passwordConfirmError && (
+                  <div className="mt-1.5 flex items-start gap-1.5 text-rose-600 text-[11px] font-bold animate-fade-in">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span className="leading-tight">{passwordConfirmError}</span>
+                  </div>
                 )}
               </div>
             </div>
+
+            {/* Duplicate Account Quick Login Prompt (Requirement 9) */}
+            {hasDuplicateAccount && (
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between gap-3 text-xs text-rose-900 font-bold animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>An account with these details already exists.</span>
+                </div>
+                <Link
+                  to="/login"
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-black text-xs transition-colors shrink-0 flex items-center gap-1 shadow-sm"
+                >
+                  Login Now <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
+            )}
 
             {/* Submit Button */}
             <button

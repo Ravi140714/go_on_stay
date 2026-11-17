@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import api from '../services/api';
+import { useAuth } from './AuthContext';
 
 export const translations = {
   en: {
@@ -314,6 +316,9 @@ export const translations = {
 const LanguageContext = createContext();
 
 export const LanguageProvider = ({ children }) => {
+  const auth = useAuth?.() || {};
+  const user = auth.user;
+
   const [currentLang, setCurrentLang] = useState(() => {
     return localStorage.getItem('bmr_lang') || 'en';
   });
@@ -322,16 +327,53 @@ export const LanguageProvider = ({ children }) => {
     return localStorage.getItem('bmr_currency') || 'INR';
   });
 
-  const changeLanguage = (langCode) => {
+  // Sync state whenever backend user profile loads or preferences change
+  useEffect(() => {
+    if (user?.preferred_language) {
+      const code = user.preferred_language.toLowerCase();
+      if (translations[code] && code !== currentLang) {
+        setCurrentLang(code);
+        localStorage.setItem('bmr_lang', code);
+      }
+    }
+    if (user?.preferred_currency && user.preferred_currency !== currentCurrency) {
+      setCurrentCurrency(user.preferred_currency);
+      localStorage.setItem('bmr_currency', user.preferred_currency);
+    }
+  }, [user?.preferred_language, user?.preferred_currency]);
+
+  const changeLanguage = async (langCode) => {
     const code = langCode.split('-')[0].toLowerCase();
     const validLang = translations[code] ? code : 'en';
     setCurrentLang(validLang);
     localStorage.setItem('bmr_lang', validLang);
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      try {
+        await api.patch('/users/profile/', { preferred_language: validLang });
+        if (auth.updateProfile) {
+          auth.updateProfile({ preferred_language: validLang });
+        }
+      } catch (err) {
+        console.warn('Could not sync preferred language to backend:', err);
+      }
+    }
   };
 
-  const changeCurrency = (currencyCode) => {
+  const changeCurrency = async (currencyCode) => {
     setCurrentCurrency(currencyCode);
     localStorage.setItem('bmr_currency', currencyCode);
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      try {
+        await api.patch('/users/profile/', { preferred_currency: currencyCode });
+        if (auth.updateProfile) {
+          auth.updateProfile({ preferred_currency: currencyCode });
+        }
+      } catch (err) {
+        console.warn('Could not sync preferred currency to backend:', err);
+      }
+    }
   };
 
   const t = (key) => {

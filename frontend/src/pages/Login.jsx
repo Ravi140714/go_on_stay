@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { KeyRound, Mail, User, Eye, EyeOff, Hotel, Sparkles, Star, CheckCircle2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import FieldError from '../components/FieldError';
 
 const Login = () => {
   const { login, logout, user, showToast } = useAuth();
@@ -12,6 +13,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const from = location.state?.from?.pathname || '/';
 
@@ -36,9 +38,19 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!username || !password) return;
+    setFieldErrors({});
+
+    if (!username.trim()) {
+      setFieldErrors({ username: 'Please enter your username or registered email.' });
+      return;
+    }
+    if (!password) {
+      setFieldErrors({ password: 'Please enter your password.' });
+      return;
+    }
+
     setLoading(true);
-    const result = await login(username, password);
+    const result = await login(username.trim(), password);
     setLoading(false);
 
     if (result.success) {
@@ -47,7 +59,9 @@ const Login = () => {
       // RESTRICTION: Admin accounts cannot log in on this customer/owner portal
       if (userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || result.user?.is_superuser || result.user?.is_staff) {
         logout();
-        showToast('Invalid username or password.', 'error');
+        const adminMsg = 'Access restricted: Administrator accounts must log in via the Admin Portal.';
+        setFieldErrors({ username: adminMsg });
+        showToast(adminMsg, 'error');
         return;
       }
 
@@ -61,6 +75,15 @@ const Login = () => {
         navigate('/', { replace: true });
       } else {
         navigate(from || '/', { replace: true });
+      }
+    } else {
+      if (result.fieldErrors && Object.keys(result.fieldErrors).length > 0) {
+        setFieldErrors(result.fieldErrors);
+      } else if (result.error) {
+        setFieldErrors({
+          username: result.error,
+          password: result.error,
+        });
       }
     }
   };
@@ -122,11 +145,19 @@ const Login = () => {
                   autoComplete="off"
                   required
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    if (fieldErrors.username) setFieldErrors((prev) => ({ ...prev, username: '' }));
+                  }}
                   placeholder="Enter username or registered email"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-rose-600 focus:bg-white transition-all outline-none focus:ring-2 focus:ring-rose-500/20"
+                  className={`w-full pl-10 pr-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white transition-all outline-none ${
+                    fieldErrors.username
+                      ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                      : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
+                  }`}
                 />
               </div>
+              <FieldError error={fieldErrors.username} />
             </div>
 
             <div>
@@ -149,9 +180,16 @@ const Login = () => {
                   autoComplete="new-password"
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }));
+                  }}
                   placeholder="••••••••••••"
-                  className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-rose-600 focus:bg-white transition-all outline-none focus:ring-2 focus:ring-rose-500/20"
+                  className={`w-full pl-10 pr-10 py-3 bg-slate-50 border rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white transition-all outline-none ${
+                    fieldErrors.password
+                      ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
+                      : 'border-slate-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20'
+                  }`}
                 />
                 <button
                   type="button"
@@ -161,6 +199,7 @@ const Login = () => {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              <FieldError error={fieldErrors.password} />
             </div>
 
             <button
