@@ -6,6 +6,7 @@ import {
   Camera, X, ChevronLeft, ChevronRight, Image as ImageIcon
 } from 'lucide-react';
 import api from '../services/api';
+import { hotelService, reviewService, wishlistService } from '../services';
 import { useAuth } from '../context/AuthContext';
 
 const getRatingLabel = (rating) => {
@@ -29,18 +30,58 @@ const HotelDetails = () => {
   const [loading, setLoading] = useState(true);
   const [roomsLoading, setRoomsLoading] = useState(true);
 
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
-  const getTomorrowStr = () => new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  // Search parameters
-  const checkIn = searchParams.get('check_in') || getTodayStr();
-  const checkOut = searchParams.get('check_out') || getTomorrowStr();
+  const getTomorrowStr = (baseDateStr, offsetDays = 1) => {
+    let base;
+    if (baseDateStr && /^\d{4}-\d{2}-\d{2}$/.test(baseDateStr)) {
+      const [y, m, d] = baseDateStr.split('-').map(Number);
+      base = new Date(y, m - 1, d);
+    } else {
+      base = new Date();
+    }
+    base.setDate(base.getDate() + offsetDays);
+    const year = base.getFullYear();
+    const month = String(base.getMonth() + 1).padStart(2, '0');
+    const day = String(base.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayStr = getTodayStr();
+  const rawParamCheckIn = searchParams.get('check_in') || todayStr;
+  const checkIn = rawParamCheckIn < todayStr ? todayStr : rawParamCheckIn;
+  const rawParamCheckOut = searchParams.get('check_out') || getTomorrowStr(checkIn, 1);
+  const checkOut = rawParamCheckOut <= checkIn ? getTomorrowStr(checkIn, 1) : rawParamCheckOut;
   const numRooms = parseInt(searchParams.get('rooms') || '1');
   const numGuests = parseInt(searchParams.get('guests') || '2');
 
   const [selectedCheckIn, setSelectedCheckIn] = useState(checkIn);
   const [selectedCheckOut, setSelectedCheckOut] = useState(checkOut);
   const [selectedRooms, setSelectedRooms] = useState(numRooms);
+
+  const handleSelectedCheckInChange = (newVal) => {
+    const today = getTodayStr();
+    const validIn = !newVal || newVal < today ? today : newVal;
+    setSelectedCheckIn(validIn);
+    if (!selectedCheckOut || selectedCheckOut <= validIn) {
+      setSelectedCheckOut(getTomorrowStr(validIn, 1));
+    }
+  };
+
+  const handleSelectedCheckOutChange = (newVal) => {
+    const minOut = getTomorrowStr(selectedCheckIn, 1);
+    if (!newVal || newVal <= selectedCheckIn) {
+      setSelectedCheckOut(minOut);
+    } else {
+      setSelectedCheckOut(newVal);
+    }
+  };
 
   const [selectedImage, setSelectedImage] = useState(null);
   const [reviews, setReviews] = useState([]);
@@ -62,8 +103,8 @@ const HotelDetails = () => {
 
   const checkWishlistStatus = async () => {
     try {
-      const res = await api.get('/wishlist/');
-      const list = res.data?.results || (Array.isArray(res.data) ? res.data : []);
+      const data = await wishlistService.getWishlist();
+      const list = data?.results || (Array.isArray(data) ? data : []);
       const isSaved = list.some((item) => (typeof item === 'object' && item !== null ? item.hotel === parseInt(id) : item === parseInt(id)));
       setIsSavedWishlist(isSaved);
     } catch (err) {
@@ -78,8 +119,8 @@ const HotelDetails = () => {
       return;
     }
     try {
-      const res = await api.post(`/wishlist/toggle/${id}/`);
-      if (res.data.is_favorited) {
+      const data = await wishlistService.toggleWishlist(id);
+      if (data.is_favorited) {
         setIsSavedWishlist(true);
         showToast(`Saved "${hotel?.name}" to your wishlist! ❤️`);
       } else {
@@ -127,11 +168,11 @@ const HotelDetails = () => {
 
   const fetchHotelDetails = async () => {
     try {
-      const res = await api.get(`/hotels/${id}/`);
-      setHotel(res.data);
-      saveRecentlyViewed(res.data);
-      if (res.data.images && res.data.images.length > 0) {
-        setSelectedImage(res.data.images[0].display_url || res.data.images[0].image_url);
+      const data = await hotelService.getHotelById(id);
+      setHotel(data);
+      saveRecentlyViewed(data);
+      if (data.images && data.images.length > 0) {
+        setSelectedImage(data.images[0].display_url || data.images[0].image_url);
       }
     } catch (err) {
       console.error('Failed to load hotel details:', err);
@@ -143,8 +184,8 @@ const HotelDetails = () => {
 
   const fetchHotelReviews = async () => {
     try {
-      const res = await api.get(`/reviews/?hotel_id=${id}`);
-      setReviews(res.data.results || res.data);
+      const data = await reviewService.getHotelReviews(id);
+      setReviews(data.results || data);
     } catch (err) {
       console.error('Failed to load hotel reviews:', err);
     }
@@ -166,9 +207,12 @@ const HotelDetails = () => {
 
   const handleDateUpdate = (e) => {
     e.preventDefault();
+    const today = getTodayStr();
+    const validIn = selectedCheckIn && selectedCheckIn >= today ? selectedCheckIn : today;
+    const validOut = selectedCheckOut && selectedCheckOut > validIn ? selectedCheckOut : getTomorrowStr(validIn, 1);
     setSearchParams({
-      check_in: selectedCheckIn,
-      check_out: selectedCheckOut,
+      check_in: validIn,
+      check_out: validOut,
       rooms: selectedRooms.toString(),
       guests: numGuests.toString(),
     });
@@ -184,11 +228,14 @@ const HotelDetails = () => {
       showToast('Only Customer accounts can book rooms. Hotel Owners & Admins manage properties.', 'error');
       return;
     }
+    const today = getTodayStr();
+    const validIn = checkIn && checkIn >= today ? checkIn : today;
+    const validOut = checkOut && checkOut > validIn ? checkOut : getTomorrowStr(validIn, 1);
     const params = new URLSearchParams({
       hotel_id: id,
       room_id: roomId.toString(),
-      check_in: checkIn,
-      check_out: checkOut,
+      check_in: validIn,
+      check_out: validOut,
       rooms: numRooms.toString(),
       guests: numGuests.toString(),
     });
@@ -250,7 +297,7 @@ const HotelDetails = () => {
 
   return (
     <div className="bg-[#eaf3f9] text-slate-900 min-h-screen pb-16">
-      
+
       {/* Top Breadcrumb Header */}
       <div className="bg-[#d5e7f5]/80 backdrop-blur-md border-b border-sky-200/60 py-4 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -280,11 +327,10 @@ const HotelDetails = () => {
             <button
               type="button"
               onClick={handleToggleWishlist}
-              className={`px-3.5 py-1.5 rounded-full border text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer ${
-                isSavedWishlist
-                  ? 'bg-rose-50 border-rose-200 text-rose-600 font-black'
-                  : 'bg-white border-slate-200 text-slate-700 hover:text-rose-600 hover:border-rose-200'
-              }`}
+              className={`px-3.5 py-1.5 rounded-full border text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer ${isSavedWishlist
+                ? 'bg-rose-50 border-rose-200 text-rose-600 font-black'
+                : 'bg-white border-slate-200 text-slate-700 hover:text-rose-600 hover:border-rose-200'
+                }`}
             >
               <Heart className={`w-3.5 h-3.5 ${isSavedWishlist ? 'fill-rose-600 text-rose-600' : ''}`} />
               <span>{isSavedWishlist ? 'Saved in Wishlist' : 'Save to Wishlist'}</span>
@@ -294,7 +340,7 @@ const HotelDetails = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
-        
+
         {/* Hotel Main Header Title */}
         <div className="space-y-2">
           <h1 className="text-3xl sm:text-4xl font-black text-slate-900">{hotel.name}</h1>
@@ -316,7 +362,7 @@ const HotelDetails = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            
+
             {/* MAIN SELECTED PHOTO WITH PREV / NEXT ARROWS */}
             <div className="lg:col-span-8 h-96 sm:h-[450px] rounded-3xl overflow-hidden bg-slate-900 shadow-md relative group">
               <img
@@ -369,11 +415,10 @@ const HotelDetails = () => {
                   <div
                     key={img.id || idx}
                     onClick={() => setSelectedImage(imgUrl)}
-                    className={`h-28 sm:h-32 rounded-2xl overflow-hidden cursor-pointer border-2 transition-all relative ${
-                      isSelected
-                        ? 'border-teal-600 ring-4 ring-teal-500/30 scale-[1.02] shadow-md opacity-100'
-                        : 'border-transparent opacity-75 hover:opacity-100 hover:scale-[1.01]'
-                    }`}
+                    className={`h-28 sm:h-32 rounded-2xl overflow-hidden cursor-pointer border-2 transition-all relative ${isSelected
+                      ? 'border-teal-600 ring-4 ring-teal-500/30 scale-[1.02] shadow-md opacity-100'
+                      : 'border-transparent opacity-75 hover:opacity-100 hover:scale-[1.01]'
+                      }`}
                   >
                     <img src={imgUrl} alt={img.caption || hotel.name} className="w-full h-full object-cover" />
                     {isSelected && (
@@ -390,13 +435,13 @@ const HotelDetails = () => {
         {/* Date & Guest Availability Filter Bar */}
         <div className="card-white p-6 border border-teal-100 shadow-md">
           <form onSubmit={handleDateUpdate} className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-            
+
             <div
               className="sm:col-span-4 cursor-pointer"
               onClick={() => {
                 const el = document.getElementById('hotel_details_checkin');
                 if (el && el.showPicker) {
-                  try { el.showPicker(); } catch (e) {}
+                  try { el.showPicker(); } catch (e) { }
                 }
               }}
             >
@@ -407,14 +452,15 @@ const HotelDetails = () => {
                 id="hotel_details_checkin"
                 type="date"
                 required
+                min={getTodayStr()}
                 value={selectedCheckIn}
                 onClick={(e) => {
-                  try { e.target.showPicker(); } catch (err) {}
+                  try { e.target.showPicker(); } catch (err) { }
                 }}
                 onFocus={(e) => {
-                  try { e.target.showPicker(); } catch (err) {}
+                  try { e.target.showPicker(); } catch (err) { }
                 }}
-                onChange={(e) => setSelectedCheckIn(e.target.value)}
+                onChange={(e) => handleSelectedCheckInChange(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-extrabold outline-none focus:border-teal-600 cursor-pointer"
               />
             </div>
@@ -424,7 +470,7 @@ const HotelDetails = () => {
               onClick={() => {
                 const el = document.getElementById('hotel_details_checkout');
                 if (el && el.showPicker) {
-                  try { el.showPicker(); } catch (e) {}
+                  try { el.showPicker(); } catch (e) { }
                 }
               }}
             >
@@ -435,14 +481,15 @@ const HotelDetails = () => {
                 id="hotel_details_checkout"
                 type="date"
                 required
+                min={getTomorrowStr(selectedCheckIn, 1)}
                 value={selectedCheckOut}
                 onClick={(e) => {
-                  try { e.target.showPicker(); } catch (err) {}
+                  try { e.target.showPicker(); } catch (err) { }
                 }}
                 onFocus={(e) => {
-                  try { e.target.showPicker(); } catch (err) {}
+                  try { e.target.showPicker(); } catch (err) { }
                 }}
-                onChange={(e) => setSelectedCheckOut(e.target.value)}
+                onChange={(e) => handleSelectedCheckOutChange(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-extrabold outline-none focus:border-teal-600 cursor-pointer"
               />
             </div>
@@ -473,7 +520,7 @@ const HotelDetails = () => {
 
         {/* Hotel Details & Available Rooms Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
+
           {/* Main Column: Available Rooms */}
           <div className="lg:col-span-8 space-y-6">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
@@ -506,9 +553,9 @@ const HotelDetails = () => {
 
                   return (
                     <div key={room.id} className="card-white p-4 sm:p-5 border border-slate-200 hover:shadow-md transition-shadow">
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                        
+
                         {/* ROOM CATEGORY PHOTO THUMBNAIL (Fixed Compact Height) */}
                         <div className="md:col-span-4 relative group rounded-2xl overflow-hidden bg-slate-100 h-44 sm:h-44 border border-slate-200 shrink-0">
                           <img
@@ -554,7 +601,7 @@ const HotelDetails = () => {
                                 <Utensils className="w-3 h-3" /> Breakfast Included
                               </span>
                             )}
-                            
+
                             {room.free_cancellation && (
                               <span className="inline-flex items-center gap-1 text-cyan-800 font-bold bg-cyan-50 px-2 py-0.5 rounded-md border border-cyan-200 text-[11px]">
                                 <CheckCircle2 className="w-3 h-3" /> Free Cancellation
@@ -677,7 +724,7 @@ const HotelDetails = () => {
 
           {/* Right Column: Hotel Amenities & Policies */}
           <div className="lg:col-span-4 space-y-6">
-            
+
             {/* Amenities Card */}
             <div className="card-white p-6 space-y-4 border border-slate-200 shadow-xs">
               <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3">
@@ -698,7 +745,7 @@ const HotelDetails = () => {
               <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3">
                 Hotel Policies & Timings
               </h3>
-              
+
               <div className="space-y-3 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500 font-bold flex items-center gap-1.5">
@@ -736,7 +783,7 @@ const HotelDetails = () => {
       {activeRoomModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-fadeIn">
           <div className="relative w-full max-w-4xl bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl space-y-4 p-6">
-            
+
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div>
@@ -802,11 +849,10 @@ const HotelDetails = () => {
                   <button
                     key={img.id || idx}
                     onClick={() => setActiveRoomImgIdx(idx)}
-                    className={`shrink-0 w-20 h-16 rounded-xl overflow-hidden border-2 transition-all ${
-                      activeRoomImgIdx === idx
-                        ? 'border-teal-400 ring-2 ring-teal-400/40 scale-105'
-                        : 'border-transparent opacity-60 hover:opacity-100'
-                    }`}
+                    className={`shrink-0 w-20 h-16 rounded-xl overflow-hidden border-2 transition-all ${activeRoomImgIdx === idx
+                      ? 'border-teal-400 ring-2 ring-teal-400/40 scale-105'
+                      : 'border-transparent opacity-60 hover:opacity-100'
+                      }`}
                   >
                     <img src={img.display_url || img.image_url} alt="Room Thumbnail" className="w-full h-full object-cover" />
                   </button>

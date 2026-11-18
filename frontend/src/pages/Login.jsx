@@ -56,12 +56,8 @@ const Login = () => {
     if (result.success) {
       const userRole = (result.user?.role || '').toUpperCase();
       
-      // RESTRICTION: Admin accounts cannot log in on this customer/owner portal
       if (userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || result.user?.is_superuser || result.user?.is_staff) {
-        logout();
-        const adminMsg = 'Access restricted: Administrator accounts must log in via the Admin Portal.';
-        setFieldErrors({ username: adminMsg });
-        showToast(adminMsg, 'error');
+        navigate('/admin/dashboard', { replace: true });
         return;
       }
 

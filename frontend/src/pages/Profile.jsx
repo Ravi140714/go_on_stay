@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
+import { authService, profileService } from '../services';
 import { parseApiError } from '../utils/errorHandler';
 import FieldError from '../components/FieldError';
 
@@ -75,17 +76,12 @@ const Profile = () => {
     new_password: '',
   });
 
-  const [notifications, setNotifications] = useState(() => {
-    if (user?.notification_preferences && typeof user.notification_preferences === 'object') {
-      return {
-        email: user.notification_preferences.email ?? true,
-        promo: user.notification_preferences.promo ?? true,
-        whatsapp: user.notification_preferences.whatsapp ?? false,
-      };
-    }
-    const saved = localStorage.getItem('bmr_notifications');
-    return saved ? JSON.parse(saved) : { email: true, promo: true, whatsapp: false };
+  const [notifications, setNotifications] = useState({
+    email: user?.notification_preferences?.email ?? true,
+    promo: user?.notification_preferences?.promo ?? true,
+    whatsapp: user?.notification_preferences?.whatsapp ?? false,
   });
+  const [savingNotifications, setSavingNotifications] = useState(false);
 
   // Sync notification preferences whenever backend user data loads
   useEffect(() => {
@@ -120,30 +116,10 @@ const Profile = () => {
     const previewUrl = URL.createObjectURL(file);
     setAvatarPreview(previewUrl);
 
-    // Prepare multipart/form-data payload
+    // Prepare multipart/form-data payload with avatar file only
     setAvatarLoading(true);
     const data = new FormData();
     data.append('avatar', file);
-
-    // Ensure authenticated user's actual email and profile details are preserved
-    const currentUser = user || JSON.parse(localStorage.getItem('user') || '{}');
-    const userEmail = currentUser?.email || formData.email;
-
-    if (userEmail) {
-      data.append('email', userEmail);
-    }
-    if (currentUser?.first_name || formData.first_name) {
-      data.append('first_name', currentUser?.first_name || formData.first_name);
-    }
-    if (currentUser?.last_name || formData.last_name) {
-      data.append('last_name', currentUser?.last_name || formData.last_name);
-    }
-    if (currentUser?.phone_number || formData.phone_number) {
-      data.append('phone_number', currentUser?.phone_number || formData.phone_number);
-    }
-    if (currentUser?.bio || formData.bio) {
-      data.append('bio', currentUser?.bio || formData.bio);
-    }
 
     const res = await updateProfile(data);
     if (res.success) {
@@ -192,7 +168,7 @@ const Profile = () => {
 
     setPassLoading(true);
     try {
-      await api.post('/users/change-password/', passwords);
+      await authService.changePassword(passwords);
       showToast('Password updated successfully!');
       setPasswords({ old_password: '', new_password: '' });
     } catch (err) {
@@ -205,20 +181,41 @@ const Profile = () => {
   };
 
   const toggleNotification = async (key) => {
+    if (savingNotifications) return; // Prevent duplicate concurrent PATCH requests
+    const previousState = { ...notifications };
     const updated = { ...notifications, [key]: !notifications[key] };
     setNotifications(updated);
-    localStorage.setItem('bmr_notifications', JSON.stringify(updated));
+    setSavingNotifications(true);
+
     try {
-      await api.patch('/users/profile/', {
-        notification_preferences: updated,
-      });
-      if (updateProfile) {
-        updateProfile({ notification_preferences: updated });
+      const resData = await profileService.updateNotificationPreferences(updated);
+      const returnedPrefs = resData?.notification_preferences;
+      if (returnedPrefs && typeof returnedPrefs === 'object') {
+        setNotifications({
+          email: returnedPrefs.email ?? updated.email,
+          promo: returnedPrefs.promo ?? updated.promo,
+          whatsapp: returnedPrefs.whatsapp ?? updated.whatsapp,
+        });
+        if (updateProfile) {
+          updateProfile({ notification_preferences: returnedPrefs });
+        }
+        showToast('Notification preference saved to your account!', 'success');
+      } else {
+        // Backend serializer does not yet include notification_preferences field
+        console.warn('Backend profile response does not include notification_preferences.');
+        if (updateProfile) {
+          updateProfile({ notification_preferences: updated });
+        }
+        showToast('Preference updated in current session (Backend persistence pending).', 'info');
       }
-      showToast('Notification preference saved to account!', 'success');
     } catch (err) {
       console.error('Failed to sync notification preferences to backend:', err);
-      showToast('Preference updated locally.', 'info');
+      // Revert state on failure so UI does not falsely show saved state
+      setNotifications(previousState);
+      const errMsg = err.response?.data?.error || err.response?.data?.detail || 'Backend support for notification preferences is pending implementation by the backend developer.';
+      showToast(errMsg, 'error');
+    } finally {
+      setSavingNotifications(false);
     }
   };
 
@@ -517,8 +514,9 @@ const Profile = () => {
                   <input
                     type="checkbox"
                     checked={notifications.email}
+                    disabled={savingNotifications}
                     onChange={() => toggleNotification('email')}
-                    className="w-5 h-5 accent-rose-600 rounded cursor-pointer"
+                    className="w-5 h-5 accent-rose-600 rounded cursor-pointer disabled:opacity-50"
                   />
                 </div>
 
@@ -530,8 +528,9 @@ const Profile = () => {
                   <input
                     type="checkbox"
                     checked={notifications.promo}
+                    disabled={savingNotifications}
                     onChange={() => toggleNotification('promo')}
-                    className="w-5 h-5 accent-rose-600 rounded cursor-pointer"
+                    className="w-5 h-5 accent-rose-600 rounded cursor-pointer disabled:opacity-50"
                   />
                 </div>
 
@@ -543,8 +542,9 @@ const Profile = () => {
                   <input
                     type="checkbox"
                     checked={notifications.whatsapp}
+                    disabled={savingNotifications}
                     onChange={() => toggleNotification('whatsapp')}
-                    className="w-5 h-5 accent-rose-600 rounded cursor-pointer"
+                    className="w-5 h-5 accent-rose-600 rounded cursor-pointer disabled:opacity-50"
                   />
                 </div>
               </div>

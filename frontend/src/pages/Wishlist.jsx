@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, MapPin, Star, Building2, Trash2 } from 'lucide-react';
-import api from '../services/api';
+import { Heart, MapPin, Star } from 'lucide-react';
+import { wishlistService } from '../services';
 import { useAuth } from '../context/AuthContext';
 
 const Wishlist = () => {
@@ -9,14 +9,10 @@ const Wishlist = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchWishlist();
-  }, []);
-
   const fetchWishlist = async () => {
     try {
-      const res = await api.get('/wishlist/');
-      setItems(res.data.results || res.data);
+      const data = await wishlistService.getWishlist();
+      setItems(data.results || data);
     } catch (err) {
       console.error('Failed to load wishlist:', err);
       showToast('Failed to load wishlist.', 'error');
@@ -25,9 +21,13 @@ const Wishlist = () => {
     }
   };
 
+  useEffect(() => {
+    fetchWishlist();
+  }, []);
+
   const handleRemove = async (hotelId, name) => {
     try {
-      await api.post(`/wishlist/toggle/${hotelId}/`);
+      await wishlistService.toggleWishlist(hotelId);
       showToast(`Removed "${name}" from wishlist.`);
       setItems(items.filter((item) => item.hotel !== hotelId));
     } catch (err) {

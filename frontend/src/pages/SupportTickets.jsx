@@ -5,6 +5,7 @@ import {
   Check, AlertCircle, Image as ImageIcon
 } from 'lucide-react';
 import api from '../services/api';
+import { supportService, bookingService } from '../services';
 import { useAuth } from '../context/AuthContext';
 
 const TICKET_CATEGORIES = [
@@ -61,8 +62,8 @@ const SupportTickets = () => {
   const fetchTickets = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/payments/support-tickets/');
-      const list = res.data.results || res.data || [];
+      const data = await supportService.getTickets();
+      const list = data.results || data || [];
       const safeList = Array.isArray(list) ? list : [];
       setTickets(safeList);
       if (safeList.length > 0 && !selectedTicket) {
@@ -80,8 +81,8 @@ const SupportTickets = () => {
   const fetchUserBookings = async () => {
     setLoadingBookings(true);
     try {
-      const res = await api.get('/bookings/');
-      const list = res.data.results || res.data || [];
+      const data = await bookingService.getMyBookings();
+      const list = data.results || data || [];
       const safeList = Array.isArray(list) ? list : [];
       setUserBookings(safeList);
       if (safeList.length > 0 && !selectedBookingId) {
@@ -103,11 +104,11 @@ const SupportTickets = () => {
 
     // Fetch fresh details with thread
     try {
-      const res = await api.get(`/payments/support-tickets/${ticket.id}/`);
-      setSelectedTicket(res.data);
+      const data = await supportService.getTicketDetail(ticket.id);
+      setSelectedTicket(data);
 
-      if (res.data.booking) {
-        fetchLinkedBooking(res.data.booking);
+      if (data.booking) {
+        fetchLinkedBooking(data.booking);
       }
     } catch (err) {
       console.error('Error fetching ticket thread:', err);
@@ -117,8 +118,8 @@ const SupportTickets = () => {
   const fetchLinkedBooking = async (bookingIdOrPk) => {
     setLoadingLinkedBooking(true);
     try {
-      const res = await api.get(`/bookings/${bookingIdOrPk}/`);
-      setLinkedBookingDetails(res.data);
+      const data = await bookingService.getBookingById(bookingIdOrPk);
+      setLinkedBookingDetails(data);
     } catch (err) {
       // Fallback check from existing loaded user bookings
       const found = userBookings.find(b => b.id === bookingIdOrPk || b.booking_id === bookingIdOrPk);
@@ -153,13 +154,12 @@ const SupportTickets = () => {
         booking: requiresBooking && selectedBookingId ? Number(selectedBookingId) : null,
       };
 
-      const res = await api.post('/payments/support-tickets/', payload);
-      const createdTicket = res.data;
+      const createdTicket = await supportService.createTicket(payload);
 
       // If customer provided an attachment URL, post it as the first message
       if (newAttachmentUrl.trim() && createdTicket.id) {
         try {
-          await api.post(`/payments/support-tickets/${createdTicket.id}/messages/`, {
+          await supportService.sendMessage(createdTicket.id, {
             message: 'Screenshot / Reference attachment provided with ticket submission.',
             attachment_url: newAttachmentUrl.trim(),
           });
@@ -202,15 +202,15 @@ const SupportTickets = () => {
         attachment_url: replyAttachment.trim() || null,
       };
 
-      await api.post(`/payments/support-tickets/${selectedTicket.id}/messages/`, payload);
+      await supportService.sendMessage(selectedTicket.id, payload);
       showToast('Reply sent successfully!');
       setReplyMessage('');
       setReplyAttachment('');
 
       // Refresh selected ticket thread
-      const res = await api.get(`/payments/support-tickets/${selectedTicket.id}/`);
-      setSelectedTicket(res.data);
-      setTickets(tickets.map(t => (t.id === res.data.id ? res.data : t)));
+      const updatedTicket = await supportService.getTicketDetail(selectedTicket.id);
+      setSelectedTicket(updatedTicket);
+      setTickets(tickets.map(t => (t.id === updatedTicket.id ? updatedTicket : t)));
     } catch (err) {
       console.error('Failed to send reply:', err);
       const msg = err.response?.data?.error || err.response?.data?.detail || 'Failed to send reply.';

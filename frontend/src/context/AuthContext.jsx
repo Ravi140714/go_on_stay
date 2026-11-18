@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
+import { authService, profileService } from '../services';
 import { parseApiError } from '../utils/errorHandler';
 import { parseRegistrationErrors } from '../utils/registrationErrors';
 
@@ -25,9 +26,9 @@ export const AuthProvider = ({ children }) => {
     const fetchProfile = async () => {
       if (accessToken) {
         try {
-          const res = await api.get('/users/profile/');
-          setUser(res.data);
-          localStorage.setItem('user', JSON.stringify(res.data));
+          const profileData = await profileService.getProfile();
+          setUser(profileData);
+          localStorage.setItem('user', JSON.stringify(profileData));
         } catch (err) {
           console.error('Failed to load user profile:', err);
         }
@@ -39,8 +40,8 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-      const res = await api.post('/users/login/', { username, password });
-      const { user: userData, access, refresh, message } = res.data;
+      const data = await authService.login({ username, password });
+      const { user: userData, access, refresh, message } = data;
       
       setUser(userData);
       setAccessToken(access);
@@ -64,8 +65,8 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (formData) => {
     try {
-      const res = await api.post('/users/register/', formData);
-      const { user: userData, access, refresh, message } = res.data;
+      const data = await authService.register(formData);
+      const { user: userData, access, refresh, message } = data;
       
       setUser(userData);
       setAccessToken(access);
@@ -159,11 +160,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    authService.logout();
     setUser(null);
     setAccessToken(null);
-    localStorage.removeItem('user');
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
     showToast('Logged out successfully.', 'info');
   };
 
@@ -173,38 +172,19 @@ export const AuthProvider = ({ children }) => {
       const currentUserEmail = storedUser?.email;
 
       let payload = data;
-      // If payload is FormData, ensure email is included if missing
-      if (payload instanceof FormData) {
-        if (!payload.has('email') && currentUserEmail) {
-          payload.append('email', currentUserEmail);
-        }
-      } else if (payload && typeof payload === 'object') {
+      // Only attach fallback email for JSON object submissions if missing
+      if (payload && !(payload instanceof FormData) && typeof payload === 'object') {
         if (!payload.email && currentUserEmail) {
           payload = { ...payload, email: currentUserEmail };
         }
       }
 
-      const isFormData = payload instanceof FormData;
-      // Try PATCH first for partial update, fallback to PUT
-      let res;
-      try {
-        res = await api.patch('/users/profile/', payload, {
-          headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : {},
-        });
-      } catch (patchErr) {
-        if (patchErr.response?.status === 405) {
-          res = await api.put('/users/profile/', payload, {
-            headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : {},
-          });
-        } else {
-          throw patchErr;
-        }
-      }
+      const updatedUser = await profileService.updateProfile(payload);
 
-      setUser(res.data);
-      localStorage.setItem('user', JSON.stringify(res.data));
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
       showToast('Profile updated successfully!');
-      return { success: true, user: res.data };
+      return { success: true, user: updatedUser };
     } catch (err) {
       const errorParsed = parseApiError(err, 'Failed to update profile.');
       showToast(errorParsed.message, 'error');

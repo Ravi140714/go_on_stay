@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, CheckCheck, Clock, Sparkles, Volume2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
+import { notificationService } from '../services';
 import { useAuth } from '../context/AuthContext';
 import { requestFcmToken, onForegroundMessage } from '../services/firebase';
 
@@ -19,10 +20,10 @@ const getSharedUnreadCount = async () => {
   if (globalUnreadPromise) {
     return globalUnreadPromise;
   }
-  globalUnreadPromise = api.get('/notifications/unread-count/')
-    .then(res => {
+  globalUnreadPromise = notificationService.getUnreadCount()
+    .then(data => {
       lastUnreadFetchTime = Date.now();
-      cachedUnreadCount = res.data.unread_count || 0;
+      cachedUnreadCount = data.unread_count || 0;
       return cachedUnreadCount;
     })
     .catch(() => cachedUnreadCount)
@@ -221,8 +222,8 @@ const NotificationBell = () => {
       
       // If unread count increased, fetch latest notification and trigger native push
       if (newCount > prevUnreadRef.current && prevUnreadRef.current !== 0) {
-        const listRes = await api.get('/notifications/');
-        const list = listRes.data.results || listRes.data || [];
+        const listData = await notificationService.getNotifications();
+        const list = listData.results || listData || [];
         const latest = list[0];
         if (latest && !latest.is_read) {
           playNotificationTone();
@@ -240,8 +241,8 @@ const NotificationBell = () => {
   const fetchNotifications = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/notifications/');
-      const list = res.data.results || res.data || [];
+      const data = await notificationService.getNotifications();
+      const list = data.results || data || [];
       setNotifications(list);
       setUnreadCount(list.filter(n => !n.is_read).length);
     } catch (err) {
@@ -263,7 +264,7 @@ const NotificationBell = () => {
   const handleMarkAsRead = async (id, e) => {
     if (e) e.stopPropagation();
     try {
-      await api.post(`/notifications/${id}/read/`);
+      await notificationService.markAsRead(id);
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (err) {
@@ -273,7 +274,7 @@ const NotificationBell = () => {
 
   const handleMarkAllAsRead = async () => {
     try {
-      await api.post('/notifications/read-all/');
+      await notificationService.markAllAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch (err) {

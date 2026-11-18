@@ -5,6 +5,7 @@ import {
   Sparkles, Compass, Check, Palmtree, Landmark, Waves, ChevronDown
 } from 'lucide-react';
 import api from '../services/api';
+import { hotelService } from '../services';
 import { useLanguage } from '../context/LanguageContext';
 import VoiceSearchButton from './VoiceSearchButton';
 
@@ -60,23 +61,55 @@ const InteractiveSearchBar = ({
   initialRooms = 1,
   initialAdults = 2,
   initialChildren = 0,
-  selectedCategory = 'HOTELS'
+  selectedCategory = 'HOTELS',
+  onTabChange
 }) => {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
-  const getTomorrowStr = () => new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTomorrowStr = (baseDateStr, offsetDays = 1) => {
+    let base;
+    if (baseDateStr && /^\d{4}-\d{2}-\d{2}$/.test(baseDateStr)) {
+      const [y, m, d] = baseDateStr.split('-').map(Number);
+      base = new Date(y, m - 1, d);
+    } else {
+      base = new Date();
+    }
+    base.setDate(base.getDate() + offsetDays);
+    const year = base.getFullYear();
+    const month = String(base.getMonth() + 1).padStart(2, '0');
+    const day = String(base.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayStr = getTodayStr();
+  const safeInitialCheckIn = initialCheckIn && initialCheckIn >= todayStr ? initialCheckIn : todayStr;
+  const safeInitialCheckOut = initialCheckOut && initialCheckOut > safeInitialCheckIn ? initialCheckOut : getTomorrowStr(safeInitialCheckIn, 1);
 
   const [destination, setDestination] = useState(initialDestination);
-  const [checkIn, setCheckIn] = useState(initialCheckIn || getTodayStr());
-  const [checkOut, setCheckOut] = useState(initialCheckOut || getTomorrowStr());
+  const [checkIn, setCheckIn] = useState(safeInitialCheckIn);
+  const [checkOut, setCheckOut] = useState(safeInitialCheckOut);
   const [rooms, setRooms] = useState(initialRooms);
   const [adults, setAdults] = useState(initialAdults);
   const [children, setChildren] = useState(initialChildren);
 
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeTab, setActiveTab] = useState(null); // 'where' | 'when' | 'who' | null
+
+  const handleTabSwitch = (newTab) => {
+    setActiveTab(newTab);
+    if (typeof onTabChange === 'function') {
+      onTabChange(newTab);
+    }
+  };
 
   // Dynamic Cities from API
   const [dynamicCities, setDynamicCities] = useState([]);
@@ -87,9 +120,9 @@ const InteractiveSearchBar = ({
 
   const fetchActiveCities = async () => {
     try {
-      const res = await api.get('/hotels/cities/');
-      if (Array.isArray(res.data) && res.data.length > 0) {
-        setDynamicCities(res.data);
+      const data = await hotelService.getCities();
+      if (Array.isArray(data) && data.length > 0) {
+        setDynamicCities(data);
       }
     } catch (err) {
       console.error('Failed to load active cities:', err);
@@ -98,16 +131,16 @@ const InteractiveSearchBar = ({
 
   const activeDestinations = dynamicCities.length > 0
     ? dynamicCities.map((cityName) => {
-        const found = destinationsList.find((d) => d.name.toLowerCase() === cityName.toLowerCase());
-        return found || {
-          name: cityName,
-          state: 'India',
-          desc: `Explore luxury stays & hotels in ${cityName}`,
-          icon: Building2,
-          color: 'bg-rose-50 text-rose-600'
-        };
-      })
-    : destinationsList;
+      const found = destinationsList.find((d) => d.name.toLowerCase() === cityName.toLowerCase());
+      return found || {
+        name: cityName,
+        state: 'India',
+        desc: `Explore luxury stays & hotels in ${cityName}`,
+        icon: Building2,
+        color: 'bg-rose-50 text-rose-600'
+      };
+    })
+    : [];
 
   const searchBarRef = useRef(null);
 
@@ -128,21 +161,43 @@ const InteractiveSearchBar = ({
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (searchBarRef.current && !searchBarRef.current.contains(event.target)) {
-        setActiveTab(null);
+        handleTabSwitch(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const handleCheckInChange = (newVal) => {
+    const today = getTodayStr();
+    const validIn = !newVal || newVal < today ? today : newVal;
+    setCheckIn(validIn);
+    if (!checkOut || checkOut <= validIn) {
+      setCheckOut(getTomorrowStr(validIn, 1));
+    }
+  };
+
+  const handleCheckOutChange = (newVal) => {
+    const minOut = getTomorrowStr(checkIn, 1);
+    if (!newVal || newVal <= checkIn) {
+      setCheckOut(minOut);
+    } else {
+      setCheckOut(newVal);
+    }
+  };
+
   const handleSearchSubmit = (e) => {
     if (e) e.preventDefault();
-    setActiveTab(null);
+    handleTabSwitch(null);
+
+    const today = getTodayStr();
+    const validCheckIn = checkIn && checkIn >= today ? checkIn : today;
+    const validCheckOut = checkOut && checkOut > validCheckIn ? checkOut : getTomorrowStr(validCheckIn, 1);
 
     const params = new URLSearchParams({
       city: destination,
-      check_in: checkIn,
-      check_out: checkOut,
+      check_in: validCheckIn,
+      check_out: validCheckOut,
       rooms: rooms.toString(),
       guests: (adults + children).toString()
     });
@@ -155,35 +210,38 @@ const InteractiveSearchBar = ({
   };
 
   const handleQuickPresetDays = (days) => {
-    const start = new Date();
-    const end = new Date(Date.now() + days * 86400000);
-    setCheckIn(start.toISOString().split('T')[0]);
-    setCheckOut(end.toISOString().split('T')[0]);
+    const today = getTodayStr();
+    setCheckIn(today);
+    setCheckOut(getTomorrowStr(today, days));
   };
 
   return (
     <div
       ref={searchBarRef}
-      className="relative z-30 mx-auto max-w-4xl my-1 transition-all duration-300 ease-out px-2 sm:px-0"
+      className={`relative ${activeTab ? 'z-50' : 'z-30'} mx-auto max-w-4xl my-1 transition-all duration-300 ease-out px-2 sm:px-0`}
     >
-      
-      {/* Outer Capsule Pill Container */}
+
+      {/* Outer Capsule Pill Container with Glassmorphism */}
       <div
-        className={`rounded-full border transition-all duration-300 flex items-center justify-between gap-1 shadow-lg hover:shadow-xl bg-white ${
-          activeTab
-            ? 'border-slate-300 ring-4 ring-[#207a72]/10'
-            : 'border-slate-200/90 hover:border-slate-300'
-        } p-1.5 sm:p-2`}
+        className={`rounded-full transition-all duration-300 flex items-center justify-between gap-1 ${activeTab
+            ? 'border-sky-300/80 ring-4 ring-sky-500/15 shadow-[0_12px_36px_rgba(2,132,199,0.18)]'
+            : 'border-white/80 shadow-[0_8px_32px_0_rgba(31,38,135,0.08)] hover:shadow-[0_12px_40px_0_rgba(31,38,135,0.15)] hover:border-white'
+          } p-1.5 sm:p-2`}
+        style={{
+          backdropFilter: 'blur(20px) saturate(190%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(190%)',
+          backgroundColor: 'rgba(255, 255, 255, 0.45)',
+          border: '1.5px solid rgba(255, 255, 255, 0.75)'
+        }}
       >
-        
+
         {/* Segment 1: Location */}
         <div
-          onClick={() => setActiveTab(activeTab === 'where' ? null : 'where')}
-          className={`flex-1 rounded-full cursor-pointer transition-all min-w-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 ${
-            activeTab === 'where'
+          onClick={() => handleTabSwitch(activeTab === 'where' ? null : 'where')}
+          className={`flex-1 rounded-full cursor-pointer transition-all min-w-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 ${activeTab === 'where'
               ? 'bg-slate-100 text-[#207a72] font-bold'
               : 'hover:bg-slate-50 text-slate-700 font-semibold'
-          }`}
+            }`}
         >
           <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
           <span className="text-xs sm:text-sm truncate">
@@ -197,12 +255,11 @@ const InteractiveSearchBar = ({
 
         {/* Segment 2: Check in - Check out */}
         <div
-          onClick={() => setActiveTab(activeTab === 'when' ? null : 'when')}
-          className={`flex-1 rounded-full cursor-pointer transition-all min-w-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 ${
-            activeTab === 'when'
+          onClick={() => handleTabSwitch(activeTab === 'when' ? null : 'when')}
+          className={`flex-1 rounded-full cursor-pointer transition-all min-w-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 ${activeTab === 'when'
               ? 'bg-slate-100 text-[#207a72] font-bold'
               : 'hover:bg-slate-50 text-slate-700 font-semibold'
-          }`}
+            }`}
         >
           <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
           <span className="text-xs sm:text-sm truncate">
@@ -216,12 +273,11 @@ const InteractiveSearchBar = ({
 
         {/* Segment 3: Person */}
         <div
-          onClick={() => setActiveTab(activeTab === 'who' ? null : 'who')}
-          className={`flex-1 rounded-full cursor-pointer transition-all min-w-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 ${
-            activeTab === 'who'
+          onClick={() => handleTabSwitch(activeTab === 'who' ? null : 'who')}
+          className={`flex-1 rounded-full cursor-pointer transition-all min-w-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 ${activeTab === 'who'
               ? 'bg-slate-100 text-[#207a72] font-bold'
               : 'hover:bg-slate-50 text-slate-700 font-semibold'
-          }`}
+            }`}
         >
           <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
           <span className="text-xs sm:text-sm truncate">
@@ -269,7 +325,7 @@ const InteractiveSearchBar = ({
 
       {/* FLOATING POPOVER: WHERE (DESTINATIONS) */}
       {activeTab === 'where' && (
-        <div className="absolute top-full left-0 right-0 sm:right-auto mt-3 w-full sm:w-96 bg-white rounded-3xl p-4 sm:p-5 shadow-2xl border border-slate-200/90 z-50 animate-in fade-in zoom-in-95 duration-200">
+        <div className="absolute top-full left-0 right-0 sm:right-auto mt-3 w-full sm:w-96 bg-white/95 backdrop-blur-2xl rounded-3xl p-4 sm:p-5 shadow-[0_20px_50px_rgba(8,_112,_184,_0.15)] border border-white/80 z-50 animate-in fade-in zoom-in-95 duration-200">
           <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
             <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
               Popular Destinations
@@ -279,46 +335,53 @@ const InteractiveSearchBar = ({
               <VoiceSearchButton
                 onTranscript={(city) => {
                   setDestination(city);
-                  setActiveTab('when');
+                  handleTabSwitch('when');
                 }}
               />
             </div>
           </div>
           <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-            {activeDestinations.map((dest) => {
-              const IconComp = dest.icon;
-              const isSelected = destination === dest.name;
-              return (
-                <div
-                  key={dest.name}
-                  onClick={() => {
-                    setDestination(dest.name);
-                    setActiveTab('when');
-                  }}
-                  className={`flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${
-                    isSelected ? 'bg-rose-50 border border-rose-200' : 'hover:bg-slate-50 border border-transparent'
-                  }`}
-                >
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${dest.color}`}>
-                    <IconComp className="w-5 h-5" />
-                  </div>
-                  <div className="flex-grow min-w-0">
-                    <div className="flex items-center justify-between">
-                      <h5 className="text-xs font-black text-slate-900 truncate">{dest.name}, {dest.state}</h5>
-                      {isSelected && <Check className="w-4 h-4 text-rose-600 shrink-0" />}
+            {activeDestinations.length > 0 ? (
+              activeDestinations.map((dest) => {
+                const IconComp = dest.icon;
+                const isSelected = destination === dest.name;
+                return (
+                  <div
+                    key={dest.name}
+                    onClick={() => {
+                      setDestination(dest.name);
+                      handleTabSwitch('when');
+                    }}
+                    className={`flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${isSelected ? 'bg-rose-50 border border-rose-200' : 'hover:bg-slate-50 border border-transparent'
+                      }`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${dest.color}`}>
+                      <IconComp className="w-5 h-5" />
                     </div>
-                    <p className="text-[11px] text-slate-500 font-medium truncate mt-0.5">{dest.desc}</p>
+                    <div className="flex-grow min-w-0">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-xs font-black text-slate-900 truncate">{dest.name}, {dest.state}</h5>
+                        {isSelected && <Check className="w-4 h-4 text-rose-600 shrink-0" />}
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-medium truncate mt-0.5">{dest.desc}</p>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              <div className="py-8 text-center space-y-2">
+                <MapPin className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-bold text-slate-500">No destinations available</p>
+                <p className="text-[10px] text-slate-400">Please verify backend connection</p>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* FLOATING POPOVER: WHEN (DATES) */}
       {activeTab === 'when' && (
-        <div className="absolute top-full left-0 right-0 sm:left-1/2 sm:-translate-x-1/2 mt-3 w-full sm:w-[480px] bg-white rounded-3xl p-4 sm:p-6 shadow-2xl border border-slate-200/90 z-50 animate-in fade-in zoom-in-95 duration-200 space-y-4 sm:space-y-5">
+        <div className="absolute top-full left-0 right-0 sm:left-1/2 sm:-translate-x-1/2 mt-3 w-full sm:w-[480px] bg-white/95 backdrop-blur-2xl rounded-3xl p-4 sm:p-6 shadow-[0_20px_50px_rgba(8,_112,_184,_0.15)] border border-white/80 z-50 animate-in fade-in zoom-in-95 duration-200 space-y-4 sm:space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
               Select Check-in & Check-out Dates
@@ -331,7 +394,7 @@ const InteractiveSearchBar = ({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5 cursor-pointer" onClick={() => {
               const el = document.getElementById('searchbar_checkin');
-              if (el && el.showPicker) { try { el.showPicker(); } catch (e) {} }
+              if (el && el.showPicker) { try { el.showPicker(); } catch (e) { } }
             }}>
               <label htmlFor="searchbar_checkin" className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider block cursor-pointer">
                 Check-in Date
@@ -340,17 +403,18 @@ const InteractiveSearchBar = ({
                 id="searchbar_checkin"
                 type="date"
                 required
+                min={getTodayStr()}
                 value={checkIn}
-                onClick={(e) => { try { e.target.showPicker(); } catch (err) {} }}
-                onFocus={(e) => { try { e.target.showPicker(); } catch (err) {} }}
-                onChange={(e) => setCheckIn(e.target.value)}
+                onClick={(e) => { try { e.target.showPicker(); } catch (err) { } }}
+                onFocus={(e) => { try { e.target.showPicker(); } catch (err) { } }}
+                onChange={(e) => handleCheckInChange(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 cursor-pointer"
               />
             </div>
 
             <div className="space-y-1.5 cursor-pointer" onClick={() => {
               const el = document.getElementById('searchbar_checkout');
-              if (el && el.showPicker) { try { el.showPicker(); } catch (e) {} }
+              if (el && el.showPicker) { try { el.showPicker(); } catch (e) { } }
             }}>
               <label htmlFor="searchbar_checkout" className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider block cursor-pointer">
                 Check-out Date
@@ -359,10 +423,11 @@ const InteractiveSearchBar = ({
                 id="searchbar_checkout"
                 type="date"
                 required
+                min={getTomorrowStr(checkIn, 1)}
                 value={checkOut}
-                onClick={(e) => { try { e.target.showPicker(); } catch (err) {} }}
-                onFocus={(e) => { try { e.target.showPicker(); } catch (err) {} }}
-                onChange={(e) => setCheckOut(e.target.value)}
+                onClick={(e) => { try { e.target.showPicker(); } catch (err) { } }}
+                onFocus={(e) => { try { e.target.showPicker(); } catch (err) { } }}
+                onChange={(e) => handleCheckOutChange(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 cursor-pointer"
               />
             </div>
@@ -407,7 +472,7 @@ const InteractiveSearchBar = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab('who')}
+            onClick={() => handleTabSwitch('who')}
             className="w-full py-2.5 text-xs font-extrabold uppercase tracking-wider bg-[#0284C7] hover:bg-[#0369A1] text-white rounded-full transition-colors shadow-[0_4px_12px_rgba(2,132,199,0.25)] cursor-pointer"
           >
             Continue to Guests & Rooms
@@ -418,8 +483,8 @@ const InteractiveSearchBar = ({
 
       {/* FLOATING POPOVER: WHO (GUESTS & ROOMS COUNTER) */}
       {activeTab === 'who' && (
-        <div className="absolute top-full left-0 right-0 sm:left-auto sm:right-0 mt-3 w-full sm:w-96 bg-white rounded-3xl p-4 sm:p-6 shadow-2xl border border-slate-200/90 z-50 animate-in fade-in zoom-in-95 duration-200 space-y-4 sm:space-y-5">
-          
+        <div className="absolute top-full left-0 right-0 sm:left-auto sm:right-0 mt-3 w-full sm:w-96 bg-white/95 backdrop-blur-2xl rounded-3xl p-4 sm:p-6 shadow-[0_20px_50px_rgba(8,_112,_184,_0.15)] border border-white/80 z-50 animate-in fade-in zoom-in-95 duration-200 space-y-4 sm:space-y-5">
+
           {/* Adult Counter */}
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div>

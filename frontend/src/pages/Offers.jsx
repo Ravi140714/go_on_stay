@@ -5,6 +5,7 @@ import {
   Calendar, ArrowRight, ShieldCheck, Hotel, Clock
 } from 'lucide-react';
 import api from '../services/api';
+import { couponService } from '../services';
 import { useAuth } from '../context/AuthContext';
 
 const Offers = () => {
@@ -20,8 +21,8 @@ const Offers = () => {
   const fetchActiveCoupons = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/coupons/available/');
-      const list = res.data?.available_coupons || res.data?.coupons || res.data?.results || (Array.isArray(res.data) ? res.data : []);
+      const data = await couponService.getAvailableCoupons();
+      const list = data?.available_coupons || data?.coupons || data?.results || (Array.isArray(data) ? data : []);
       // Filter only currently active coupons
       const activeOnly = list.filter(c => c && c.is_active !== false);
       setCoupons(activeOnly);

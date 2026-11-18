@@ -6,6 +6,7 @@ import {
   ShieldCheck, AlertCircle, Lock, ArrowLeft, ArrowRight, RotateCcw, RefreshCw
 } from 'lucide-react';
 import api from '../services/api';
+import { bookingService, reviewService } from '../services';
 import { useAuth } from '../context/AuthContext';
 import { formatDisplayDate } from '../utils/dateUtils';
 import Pagination from '../components/Pagination';
@@ -56,31 +57,12 @@ const maskBankAcc = (acc) => {
 };
 
 const getOwnerApproval = (bookingOrId) => {
-  try {
-    const existing = JSON.parse(localStorage.getItem('bmr_owner_cancellation_approvals') || '{}');
-    if (!bookingOrId) return null;
-    if (typeof bookingOrId === 'object') {
-      const keys = [
-        bookingOrId.id,
-        bookingOrId.booking_id,
-        bookingOrId.booking_reference,
-        bookingOrId.reference_id,
-        bookingOrId.booking
-      ].filter(Boolean).map(String);
-      for (const k of keys) {
-        const clean = k.replace(/^#/, '');
-        if (existing[k] || existing[clean] || existing[`#${clean}`]) {
-          return existing[k] || existing[clean] || existing[`#${clean}`];
-        }
-      }
-      return null;
-    }
-    const str = String(bookingOrId).trim();
-    const clean = str.replace(/^#/, '');
-    return existing[str] || existing[clean] || existing[`#${clean}`] || null;
-  } catch (e) {
-    return null;
+  if (!bookingOrId) return null;
+  if (typeof bookingOrId === 'object') {
+    const oStatus = bookingOrId.owner_approval_status || bookingOrId.cancellation_breakdown?.owner_approval?.status;
+    if (oStatus) return { status: String(oStatus).toUpperCase() };
   }
+  return null;
 };
 
 const MyBookings = () => {
@@ -116,51 +98,9 @@ const MyBookings = () => {
 
   const fetchMyBookings = async () => {
     try {
-      const res = await api.get('/bookings/?page_size=1000');
-      let rawList = res.data?.results || res.data || [];
-
-      // Check each cancelled or approved booking against backend customer payout status API
-      const updatedList = await Promise.all(
-        rawList.map(async (b) => {
-          const bStatus = (b.booking_status || b.status || '').toUpperCase();
-          const pStatus = (b.payment_status || '').toUpperCase();
-          const rStatus = (b.refund_status || '').toUpperCase();
-
-          if (bStatus === 'REFUNDED' || pStatus === 'REFUNDED' || rStatus === 'REFUNDED') {
-            return { ...b, booking_status: 'REFUNDED', payment_status: 'REFUNDED', refund_status: 'REFUNDED' };
-          }
-
-          // If booking is cancelled or in approval queue, query backend customer payout status directly
-          const isCancelled = bStatus === 'CANCELLED' || bStatus === 'CANCELLATION_REQUESTED' || bStatus === 'OWNER_APPROVED' || b.cancellation_status;
-          if (isCancelled) {
-            try {
-              const lookupId = encodeURIComponent(String(b.booking_id || b.id).replace(/^#/, ''));
-              const payoutRes = await api.get(`/payments/payouts/customer/${lookupId}/?sync=true`);
-              const pData = payoutRes.data;
-              if (pData && (pData.payout_id || pData.status || pData.id)) {
-                const pStat = (pData.status || '').toUpperCase();
-                if (pStat === 'PROCESSED' || pStat === 'SUCCESS' || pStat === 'PROCESSING' || pStat === 'QUEUED' || pData.payout_id) {
-                  return {
-                    ...b,
-                    booking_status: 'REFUNDED',
-                    status: 'REFUNDED',
-                    payment_status: 'REFUNDED',
-                    refund_status: 'REFUNDED',
-                    refund_arn: pData.payout_id || pData.id || b.refund_arn,
-                    utr: pData.utr || b.utr
-                  };
-                }
-              }
-            } catch (err) {
-              // Ignore not found
-            }
-          }
-
-          return b;
-        })
-      );
-
-      setBookings(updatedList);
+      const data = await bookingService.getMyBookings();
+      const rawList = data?.results || data || [];
+      setBookings(rawList);
     } catch (err) {
       console.error('Failed to load trips:', err);
       showToast('Failed to load your booking history.', 'error');
@@ -176,8 +116,8 @@ const MyBookings = () => {
     setCancelLoadingQuote(true);
 
     try {
-      const res = await api.get(`/bookings/${booking.id}/cancel/`);
-      setCancelQuote(res.data);
+      const data = await bookingService.getCancelPreview(booking.id);
+      setCancelQuote(data);
     } catch (err) {
       console.error('Failed to fetch cancellation preview:', err);
       showToast('Failed to calculate cancellation policy quote.', 'error');
@@ -195,10 +135,10 @@ const MyBookings = () => {
         reason: cancelReason.trim() || 'Guest requested cancellation'
       };
 
-      const res = await api.post(`/bookings/${cancelModalBooking.id}/cancel/`, payload);
+      const data = await bookingService.cancelBooking(cancelModalBooking.id, payload);
 
-      const refundAmount = res.data?.refundable_amount != null 
-        ? parseFloat(res.data.refundable_amount).toFixed(2)
+      const refundAmount = data?.refundable_amount != null 
+        ? parseFloat(data.refundable_amount).toFixed(2)
         : (cancelQuote ? parseFloat(cancelQuote.refundable_amount).toFixed(2) : '0.00');
 
       showToast(`🎉 Cancellation requested! Sent to Hotel Owner for approval. Refund due: ₹${refundAmount} (will be refunded to original payment method).`, 'success');
@@ -225,7 +165,7 @@ const MyBookings = () => {
     if (!ratingBooking) return;
     setSubmittingRating(true);
     try {
-      await api.post('/reviews/', {
+      await reviewService.createReview({
         booking: ratingBooking.id,
         rating: selectedRating,
         comment: ratingComment
@@ -265,19 +205,19 @@ const MyBookings = () => {
   const filteredBookings = bookings.filter((b) => {
     if (activeTab === 'CONFIRMED') return b.booking_status === 'CONFIRMED' || b.booking_status === 'CHECKED_IN';
     if (activeTab === 'CANCELLED') {
-      const adminRefund = getAdminRefund(b);
-      const approval = getOwnerApproval(b);
+      const bStatus = (b.booking_status || b.status || '').toUpperCase();
+      const pStatus = (b.payment_status || '').toUpperCase();
+      const rStatus = (b.refund_status || '').toUpperCase();
       return (
-        b.booking_status === 'CANCELLED' ||
-        b.booking_status === 'REFUNDED' ||
-        b.booking_status === 'CANCELLATION_REQUESTED' ||
-        b.booking_status === 'OWNER_APPROVED' ||
-        b.booking_status === 'OWNER_REJECTED' ||
+        bStatus === 'CANCELLED' ||
+        bStatus === 'REFUNDED' ||
+        bStatus === 'CANCELLATION_REQUESTED' ||
+        bStatus === 'OWNER_APPROVED' ||
+        bStatus === 'OWNER_REJECTED' ||
         b.cancellation_status === 'CANCELLATION_REQUESTED' ||
-        b.payment_status === 'REFUND_PENDING' ||
-        b.payment_status === 'REFUNDED' ||
-        adminRefund?.status === 'REFUNDED' ||
-        approval?.status === 'REFUNDED'
+        pStatus === 'REFUND_PENDING' ||
+        pStatus === 'REFUNDED' ||
+        rStatus === 'REFUNDED'
       );
     }
     if (activeTab === 'COMPLETED') return b.booking_status === 'COMPLETED' || b.booking_status === 'CHECKED_OUT';
@@ -366,16 +306,14 @@ const MyBookings = () => {
                           </div>
                         )}
                         {(() => {
-                          const approval = getOwnerApproval(b);
-                          const adminRefund = getAdminRefund(b);
                           const bStatus = (b.booking_status || b.status || '').toUpperCase();
                           const pStatus = (b.payment_status || '').toUpperCase();
                           const rStatus = (b.refund_status || '').toUpperCase();
 
-                          const isRefunded = bStatus === 'REFUNDED' || pStatus === 'REFUNDED' || rStatus === 'REFUNDED' || adminRefund?.status === 'REFUNDED' || approval?.status === 'REFUNDED';
-                          const isProcessing = pStatus === 'REFUND_PROCESSING' || rStatus === 'PROCESSING' || rStatus === 'REFUND_PROCESSING' || adminRefund?.status === 'PROCESSING';
-                          const isRejected = approval?.status === 'REJECTED' || bStatus === 'OWNER_REJECTED' || b.cancellation_status === 'OWNER_REJECTED' || b.owner_approval_status === 'REJECTED' || b.cancellation_breakdown?.owner_approval?.status === 'REJECTED';
-                          const isApproved = !isRefunded && !isProcessing && (approval?.status === 'APPROVED' || bStatus === 'OWNER_APPROVED' || b.cancellation_status === 'OWNER_APPROVED' || b.owner_approval_status === 'APPROVED' || b.cancellation_breakdown?.owner_approval?.status === 'APPROVED');
+                          const isRefunded = bStatus === 'REFUNDED' || pStatus === 'REFUNDED' || rStatus === 'REFUNDED';
+                          const isProcessing = pStatus === 'REFUND_PROCESSING' || rStatus === 'PROCESSING' || rStatus === 'REFUND_PROCESSING';
+                          const isRejected = bStatus === 'OWNER_REJECTED' || b.cancellation_status === 'OWNER_REJECTED' || b.owner_approval_status === 'REJECTED' || b.cancellation_breakdown?.owner_approval?.status === 'REJECTED';
+                          const isApproved = !isRefunded && !isProcessing && (bStatus === 'OWNER_APPROVED' || b.cancellation_status === 'OWNER_APPROVED' || b.owner_approval_status === 'APPROVED' || b.cancellation_breakdown?.owner_approval?.status === 'APPROVED');
 
                           if (isRefunded) {
                             return (
@@ -487,16 +425,14 @@ const MyBookings = () => {
 
                     {/* Cancellation & Refund Info Banner */}
                     {(() => {
-                      const approval = getOwnerApproval(b);
-                      const adminRefund = getAdminRefund(b);
                       const bStatus = (b.booking_status || b.status || '').toUpperCase();
                       const pStatus = (b.payment_status || '').toUpperCase();
                       const rStatus = (b.refund_status || '').toUpperCase();
 
-                      const isRefunded = bStatus === 'REFUNDED' || pStatus === 'REFUNDED' || rStatus === 'REFUNDED' || adminRefund?.status === 'REFUNDED' || approval?.status === 'REFUNDED';
-                      const isProcessing = pStatus === 'REFUND_PROCESSING' || rStatus === 'PROCESSING' || rStatus === 'REFUND_PROCESSING' || adminRefund?.status === 'PROCESSING';
-                      const isRejected = approval?.status === 'REJECTED' || bStatus === 'OWNER_REJECTED' || b.cancellation_status === 'OWNER_REJECTED' || b.owner_approval_status === 'REJECTED' || b.cancellation_breakdown?.owner_approval?.status === 'REJECTED';
-                      const isApproved = !isRefunded && !isProcessing && (approval?.status === 'APPROVED' || bStatus === 'OWNER_APPROVED' || b.cancellation_status === 'OWNER_APPROVED' || b.owner_approval_status === 'APPROVED' || b.cancellation_breakdown?.owner_approval?.status === 'APPROVED');
+                      const isRefunded = bStatus === 'REFUNDED' || pStatus === 'REFUNDED' || rStatus === 'REFUNDED';
+                      const isProcessing = pStatus === 'REFUND_PROCESSING' || rStatus === 'PROCESSING' || rStatus === 'REFUND_PROCESSING';
+                      const isRejected = bStatus === 'OWNER_REJECTED' || b.cancellation_status === 'OWNER_REJECTED' || b.owner_approval_status === 'REJECTED' || b.cancellation_breakdown?.owner_approval?.status === 'REJECTED';
+                      const isApproved = !isRefunded && !isProcessing && (bStatus === 'OWNER_APPROVED' || b.cancellation_status === 'OWNER_APPROVED' || b.owner_approval_status === 'APPROVED' || b.cancellation_breakdown?.owner_approval?.status === 'APPROVED');
                       const isCancelledWorkflow = bStatus === 'CANCELLED' || isRefunded || bStatus === 'CANCELLATION_REQUESTED' || isApproved || isRejected || b.cancellation_status || pStatus === 'REFUND_PENDING';
 
                       if (!isCancelledWorkflow) return null;
@@ -556,19 +492,19 @@ const MyBookings = () => {
                                 🎉 Refund Successfully Disbursed to Original Payment Source.
                               </span>
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                {(adminRefund?.refund_arn || b.refund_arn || b.razorpay_refund_id) && (
+                                {(b.refund_arn || b.razorpay_refund_id) && (
                                   <span className="font-mono text-[10px] text-emerald-800 bg-white/80 px-2 py-0.5 rounded border border-emerald-200">
-                                    Refund ID: {adminRefund?.refund_arn || b.refund_arn || b.razorpay_refund_id}
+                                    Refund ID: {b.refund_arn || b.razorpay_refund_id}
                                   </span>
                                 )}
-                                {(adminRefund?.refund_amount || b.refundable_amount || b.total_amount) && (
+                                {(b.refundable_amount || b.refund_amount || b.total_amount) && (
                                   <span className="font-mono text-[10px] text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded border border-emerald-300 font-extrabold">
-                                    Amount: ₹{adminRefund?.refund_amount || b.refundable_amount || b.total_amount}
+                                    Amount: ₹{b.refundable_amount || b.refund_amount || b.total_amount}
                                   </span>
                                 )}
-                                {(adminRefund?.refunded_at || b.refunded_at) && (
+                                {(b.refunded_at || b.updated_at) && (
                                   <span className="text-[10px] text-emerald-700 font-semibold">
-                                    {new Date(adminRefund?.refunded_at || b.refunded_at).toLocaleDateString()}
+                                    {new Date(b.refunded_at || b.updated_at).toLocaleDateString()}
                                   </span>
                                 )}
                               </div>

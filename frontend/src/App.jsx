@@ -6,6 +6,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Toast from './components/Toast';
 import ProtectedRoute from './components/ProtectedRoute';
+import { CustomerRoute, OwnerRoute, AdminRoute, StaffRoute } from './routes';
 
 import ScrollToTop from './components/ScrollToTop';
 
@@ -83,25 +84,25 @@ const App = () => {
               <Route
                 path="/booking"
                 element={
-                  <ProtectedRoute allowedRoles={['CUSTOMER']}>
+                  <CustomerRoute>
                     <BookingPage />
-                  </ProtectedRoute>
+                  </CustomerRoute>
                 }
               />
               <Route
                 path="/payment"
                 element={
-                  <ProtectedRoute allowedRoles={['CUSTOMER']}>
+                  <CustomerRoute>
                     <PaymentPage />
-                  </ProtectedRoute>
+                  </CustomerRoute>
                 }
               />
               <Route
                 path="/booking-confirmation/:id"
                 element={
-                  <ProtectedRoute allowedRoles={['CUSTOMER']}>
+                  <CustomerRoute>
                     <BookingConfirmation />
-                  </ProtectedRoute>
+                  </CustomerRoute>
                 }
               />
               <Route
@@ -117,57 +118,57 @@ const App = () => {
               <Route
                 path="/owner/dashboard"
                 element={
-                  <ProtectedRoute allowedRoles={['HOTEL_OWNER', 'ADMIN']}>
+                  <OwnerRoute>
                     <OwnerDashboard />
-                  </ProtectedRoute>
+                  </OwnerRoute>
                 }
               />
               <Route
                 path="/owner/dashboard/:subTab"
                 element={
-                  <ProtectedRoute allowedRoles={['HOTEL_OWNER', 'ADMIN']}>
+                  <OwnerRoute>
                     <OwnerDashboard />
-                  </ProtectedRoute>
+                  </OwnerRoute>
                 }
               />
               <Route
                 path="/owner/hotels/new"
                 element={
-                  <ProtectedRoute allowedRoles={['HOTEL_OWNER', 'ADMIN']}>
+                  <OwnerRoute>
                     <AddEditHotel />
-                  </ProtectedRoute>
+                  </OwnerRoute>
                 }
               />
               <Route
                 path="/owner/hotels/:id/edit"
                 element={
-                  <ProtectedRoute allowedRoles={['HOTEL_OWNER', 'ADMIN']}>
+                  <OwnerRoute>
                     <AddEditHotel />
-                  </ProtectedRoute>
+                  </OwnerRoute>
                 }
               />
               <Route
                 path="/owner/hotels/:hotelId/rooms"
                 element={
-                  <ProtectedRoute allowedRoles={['HOTEL_OWNER', 'ADMIN']}>
+                  <OwnerRoute>
                     <ManageRooms />
-                  </ProtectedRoute>
+                  </OwnerRoute>
                 }
               />
               <Route
                 path="/owner/hotels/:hotelId/rooms/new"
                 element={
-                  <ProtectedRoute allowedRoles={['HOTEL_OWNER', 'ADMIN']}>
+                  <OwnerRoute>
                     <AddEditRoom />
-                  </ProtectedRoute>
+                  </OwnerRoute>
                 }
               />
               <Route
                 path="/owner/hotels/:hotelId/rooms/:roomId/edit"
                 element={
-                  <ProtectedRoute allowedRoles={['HOTEL_OWNER', 'ADMIN']}>
+                  <OwnerRoute>
                     <AddEditRoom />
-                  </ProtectedRoute>
+                  </OwnerRoute>
                 }
               />
 
@@ -175,9 +176,9 @@ const App = () => {
               <Route
                 path="/staff/dashboard"
                 element={
-                  <ProtectedRoute allowedRoles={['HOTEL_STAFF', 'HOTEL_OWNER', 'ADMIN']}>
+                  <StaffRoute>
                     <StaffDashboard />
-                  </ProtectedRoute>
+                  </StaffRoute>
                 }
               />
 
@@ -195,9 +196,9 @@ const App = () => {
               <Route
                 path="/admin/dashboard"
                 element={
-                  <ProtectedRoute allowedRoles={['ADMIN', 'SUPER_ADMIN']}>
+                  <AdminRoute>
                     <AdminDashboard />
-                  </ProtectedRoute>
+                  </AdminRoute>
                 }
               />
 

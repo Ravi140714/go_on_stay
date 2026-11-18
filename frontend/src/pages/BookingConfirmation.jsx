@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { CheckCircle2, Printer, Calendar, MapPin, Building2, User, Phone, Mail, ShieldCheck, Clock, FileText, ArrowLeft } from 'lucide-react';
 import api from '../services/api';
+import { bookingService } from '../services';
 import { useAuth } from '../context/AuthContext';
 
 const BookingConfirmation = () => {
@@ -32,8 +33,8 @@ const BookingConfirmation = () => {
 
   const fetchBookingReceipt = async () => {
     try {
-      const res = await api.get(`/bookings/${id}/`);
-      setBooking(res.data);
+      const data = await bookingService.getBookingById(id);
+      setBooking(data);
     } catch (err) {
       console.error('Failed to load booking receipt:', err);
       showToast('Failed to load booking confirmation details.', 'error');
@@ -50,8 +51,8 @@ const BookingConfirmation = () => {
     if (!booking) return;
     setSendingEmail(true);
     try {
-      const res = await api.post(`/bookings/${booking.booking_id}/resend-email/`);
-      showToast(res.data.message || 'Confirmation email with PDF invoice dispatched!', 'success');
+      const data = await bookingService.resendConfirmationEmail(booking.booking_id);
+      showToast(data.message || 'Confirmation email with PDF invoice dispatched!', 'success');
     } catch (err) {
       showToast(err.response?.data?.error || 'Failed to dispatch confirmation email.', 'error');
     } finally {

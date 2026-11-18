@@ -7,6 +7,7 @@ import {
   LayoutGrid, Map
 } from 'lucide-react';
 import api from '../services/api';
+import { hotelService, wishlistService } from '../services';
 import { useAuth } from '../context/AuthContext';
 import VoiceSearchButton from '../components/VoiceSearchButton';
 import HotelMapView from '../components/HotelMapView';
@@ -211,39 +212,32 @@ const HotelSearch = () => {
   const navigate = useNavigate();
   const { user, showToast } = useAuth();
 
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
-  const getTomorrowStr = () => new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  // Dynamic Cities & Amenities from API (initialized from cache if available)
-  const [activeCities, setActiveCities] = useState(() => {
-    if (cachedCities && cachedCities.length > 0) return cachedCities;
-    try {
-      const saved = sessionStorage.getItem('bmr_cached_active_cities');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          cachedCities = parsed;
-          return parsed;
-        }
-      }
-    } catch (e) {}
-    return [];
-  });
+  const getTomorrowStr = (baseDateStr) => {
+    let d;
+    if (baseDateStr && /^\d{4}-\d{2}-\d{2}$/.test(baseDateStr)) {
+      const [y, m, day] = baseDateStr.split('-').map(Number);
+      d = new Date(y, m - 1, day);
+    } else {
+      d = new Date();
+    }
+    d.setDate(d.getDate() + 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  const [backendAmenities, setBackendAmenities] = useState(() => {
-    if (cachedAmenities && cachedAmenities.length > 0) return cachedAmenities;
-    try {
-      const saved = sessionStorage.getItem('bmr_cached_amenities');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          cachedAmenities = parsed;
-          return parsed;
-        }
-      }
-    } catch (e) {}
-    return [];
-  });
+  // Dynamic Cities & Amenities from API
+  const [activeCities, setActiveCities] = useState([]);
+  const [backendAmenities, setBackendAmenities] = useState([]);
 
   useEffect(() => {
     fetchCities();
@@ -251,85 +245,30 @@ const HotelSearch = () => {
   }, []);
 
   const fetchCities = async () => {
-    if (cachedCities && cachedCities.length > 0) {
-      setActiveCities(cachedCities);
-      return;
-    }
-    if (inFlightCitiesPromise) {
-      try {
-        const data = await inFlightCitiesPromise;
-        if (data && data.length > 0) setActiveCities(data);
-      } catch (e) {}
-      return;
-    }
-    inFlightCitiesPromise = api.get('/hotels/cities/')
-      .then((res) => {
-        const list = Array.isArray(res.data) ? res.data : [];
-        if (list.length > 0) {
-          cachedCities = list;
-          try {
-            sessionStorage.setItem('bmr_cached_active_cities', JSON.stringify(list));
-          } catch (e) {}
-        }
-        return list;
-      })
-      .catch((err) => {
-        console.error('Failed to fetch active hotel cities:', err);
-        return [];
-      })
-      .finally(() => {
-        inFlightCitiesPromise = null;
-      });
-
     try {
-      const data = await inFlightCitiesPromise;
-      if (data && data.length > 0) {
-        setActiveCities(data);
-      }
-    } catch (e) {}
+      const data = await hotelService.getCities();
+      const list = Array.isArray(data) ? data : (data?.results || []);
+      setActiveCities(list || []);
+    } catch (err) {
+      console.error('Failed to fetch active hotel cities:', err);
+      setActiveCities([]);
+    }
   };
 
   const fetchAmenities = async () => {
-    if (cachedAmenities && cachedAmenities.length > 0) {
-      setBackendAmenities(cachedAmenities);
-      return;
-    }
-    if (inFlightAmenitiesPromise) {
-      try {
-        const list = await inFlightAmenitiesPromise;
-        if (list && list.length > 0) setBackendAmenities(list);
-      } catch (e) {}
-      return;
-    }
-    inFlightAmenitiesPromise = api.get('/hotels/amenities/')
-      .then((res) => {
-        const list = res.data?.results || (Array.isArray(res.data) ? res.data : []);
-        if (list.length > 0) {
-          const parsed = list.map((a) => (typeof a === 'string' ? a : a.name)).filter(Boolean);
-          if (parsed.length > 0) {
-            cachedAmenities = parsed;
-            try {
-              sessionStorage.setItem('bmr_cached_amenities', JSON.stringify(parsed));
-            } catch (e) {}
-            return parsed;
-          }
-        }
-        return [];
-      })
-      .catch((err) => {
-        console.warn('Failed to fetch backend amenities:', err);
-        return [];
-      })
-      .finally(() => {
-        inFlightAmenitiesPromise = null;
-      });
-
     try {
-      const list = await inFlightAmenitiesPromise;
-      if (list && list.length > 0) {
-        setBackendAmenities(list);
+      const data = await hotelService.getAmenities();
+      const list = data?.results || (Array.isArray(data) ? data : []);
+      if (list.length > 0) {
+        const parsed = list.map((a) => (typeof a === 'string' ? a : a.name)).filter(Boolean);
+        setBackendAmenities(parsed);
+      } else {
+        setBackendAmenities([]);
       }
-    } catch (e) {}
+    } catch (err) {
+      console.warn('Failed to fetch backend amenities:', err);
+      setBackendAmenities([]);
+    }
   };
 
   const availableAmenities = backendAmenities.length > 0 ? backendAmenities : defaultAmenities;
@@ -342,8 +281,11 @@ const HotelSearch = () => {
   // URL search parameters
   const qCityParam = searchParams.get('city') || '';
   const qSearchParam = searchParams.get('search') || searchParams.get('query') || '';
-  const checkIn = searchParams.get('check_in') || getTodayStr();
-  const checkOut = searchParams.get('check_out') || getTomorrowStr();
+  const todayStr = getTodayStr();
+  const rawParamCheckIn = searchParams.get('check_in') || todayStr;
+  const checkIn = rawParamCheckIn < todayStr ? todayStr : rawParamCheckIn;
+  const rawParamCheckOut = searchParams.get('check_out') || getTomorrowStr(checkIn);
+  const checkOut = rawParamCheckOut <= checkIn ? getTomorrowStr(checkIn) : rawParamCheckOut;
   const rooms = parseInt(searchParams.get('rooms') || '1');
   const guests = parseInt(searchParams.get('guests') || '2');
   const propTypeParam = searchParams.get('property_type') || '';
@@ -400,13 +342,13 @@ const HotelSearch = () => {
       try {
         const list = await inFlightWishlistPromise;
         if (list) setUserWishlist(list);
-      } catch (e) {}
+      } catch (e) { }
       return;
     }
 
-    inFlightWishlistPromise = api.get('/wishlist/')
-      .then((res) => {
-        const rawList = res.data?.results || (Array.isArray(res.data) ? res.data : []);
+    inFlightWishlistPromise = wishlistService.getWishlist()
+      .then((data) => {
+        const rawList = data?.results || (Array.isArray(data) ? data : []);
         const ids = rawList.map((item) => (typeof item === 'object' && item !== null ? item.hotel : item)).filter(Boolean);
         cachedWishlist = {
           userId: currentUserId,
@@ -428,7 +370,7 @@ const HotelSearch = () => {
       if (list) {
         setUserWishlist(list);
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const handleToggleWishlist = async (e, hotel) => {
@@ -440,8 +382,8 @@ const HotelSearch = () => {
       return;
     }
     try {
-      const res = await api.post(`/wishlist/toggle/${hotel.id}/`);
-      if (res.data.is_favorited) {
+      const data = await wishlistService.toggleWishlist(hotel.id);
+      if (data.is_favorited) {
         setUserWishlist((prev) => {
           const next = [...prev, hotel.id];
           cachedWishlist = { userId: user?.id, list: next, timestamp: Date.now() };
@@ -478,19 +420,28 @@ const HotelSearch = () => {
     const activeCity = searchParams.get('city') || '';
     const activeQuery = searchParams.get('search') || searchParams.get('query') || '';
     const activePropType = searchParams.get('property_type') || '';
-    
-    const queryParams = new URLSearchParams();
-    if (activeCity) queryParams.append('city', activeCity);
-    if (activeQuery) queryParams.append('search', activeQuery);
-    if (activePropType) queryParams.append('property_type', activePropType);
-    const queryString = queryParams.toString();
+    const activeCheckIn = searchParams.get('check_in') || '';
+    const activeCheckOut = searchParams.get('check_out') || '';
+    const activeRooms = searchParams.get('rooms') || '';
+    const activeGuests = searchParams.get('guests') || '';
+
+    const searchPayload = {};
+    if (activeCity) searchPayload.city = activeCity;
+    if (activeQuery) searchPayload.search = activeQuery;
+    if (activePropType) searchPayload.property_type = activePropType;
+    if (activeCheckIn) searchPayload.check_in = activeCheckIn;
+    if (activeCheckOut) searchPayload.check_out = activeCheckOut;
+    if (activeRooms) searchPayload.rooms = activeRooms;
+    if (activeGuests) searchPayload.guests = activeGuests;
+
+    const queryString = new URLSearchParams(searchPayload).toString();
 
     // 1. Deduplicate identical in-flight requests (e.g. from StrictMode remount)
     if (inFlightHotelsKey === queryString && inFlightHotelsPromise) {
       try {
         const data = await inFlightHotelsPromise;
         if (data) setHotels(data);
-      } catch (err) {}
+      } catch (err) { }
       return;
     }
 
@@ -503,9 +454,9 @@ const HotelSearch = () => {
 
     setLoading(true);
     inFlightHotelsKey = queryString;
-    inFlightHotelsPromise = api.get(`/hotels/?${queryString}`)
-      .then((res) => {
-        const data = res.data?.results || (Array.isArray(res.data) ? res.data : []);
+    inFlightHotelsPromise = hotelService.searchHotels(searchPayload)
+      .then((resData) => {
+        const data = resData?.results || (Array.isArray(resData) ? resData : []);
         lastHotelsKey = queryString;
         lastHotelsData = data;
         return data;
@@ -526,7 +477,7 @@ const HotelSearch = () => {
       if (data) {
         setHotels(data);
       }
-    } catch (err) {}
+    } catch (err) { }
   };
 
   const handleCitySearchSubmit = (e) => {
@@ -628,7 +579,7 @@ const HotelSearch = () => {
 
     if (sortBy === 'price_low') return (a.starting_price || 0) - (b.starting_price || 0);
     if (sortBy === 'price_high') return (b.starting_price || 0) - (a.starting_price || 0);
-    
+
     // Rating / Recommended sorting: 5 rating first -> more reviews -> star rating
     const ratingA = a.guest_rating !== null && a.guest_rating !== undefined ? parseFloat(a.guest_rating) : (a.star_rating || 0);
     const ratingB = b.guest_rating !== null && b.guest_rating !== undefined ? parseFloat(b.guest_rating) : (b.star_rating || 0);
@@ -656,10 +607,10 @@ const HotelSearch = () => {
 
   return (
     <div className="bg-[#eaf3f9] text-slate-900 min-h-screen pb-16">
-      
+
       {/* Main Content Layout */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-4">
-        
+
         {/* TOP CATEGORY SWITCHER TABS: [Hotels] | [Villas & Homestays] */}
         <div className="bg-[#eaf3f9] rounded-2xl border border-sky-200/80 shadow-xs px-4 pt-3 pb-1">
           <CategoryTabs
@@ -697,7 +648,7 @@ const HotelSearch = () => {
 
           {/* Action Row: Search Input + View Mode Switcher + Filters + Sorting */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            
+
             {/* Quick City Search with Voice */}
             <form onSubmit={handleCitySearchSubmit} className="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 focus-within:border-rose-600 focus-within:bg-white transition-all w-full md:w-80">
               <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -732,11 +683,10 @@ const HotelSearch = () => {
                 <button
                   type="button"
                   onClick={() => setViewMode('list')}
-                  className={`py-1.5 px-3 rounded-full font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                    viewMode === 'list'
-                      ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
-                      : 'text-[#475569] hover:text-[#0F172A]'
-                  }`}
+                  className={`py-1.5 px-3 rounded-full font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${viewMode === 'list'
+                    ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                    : 'text-[#475569] hover:text-[#0F172A]'
+                    }`}
                   title="Switch to List View"
                 >
                   <LayoutGrid className={`w-3.5 h-3.5 ${viewMode === 'list' ? 'text-white' : 'text-[#475569]'}`} />
@@ -745,11 +695,10 @@ const HotelSearch = () => {
                 <button
                   type="button"
                   onClick={() => setViewMode('map')}
-                  className={`py-1.5 px-3 rounded-full font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                    viewMode === 'map'
-                      ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
-                      : 'text-[#475569] hover:text-[#0F172A]'
-                  }`}
+                  className={`py-1.5 px-3 rounded-full font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${viewMode === 'map'
+                    ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                    : 'text-[#475569] hover:text-[#0F172A]'
+                    }`}
                   title="Switch to Map View"
                 >
                   <Map className={`w-3.5 h-3.5 ${viewMode === 'map' ? 'text-white' : 'text-[#475569]'}`} />
@@ -841,7 +790,7 @@ const HotelSearch = () => {
           <div className="space-y-6">
             {sortedHotels.slice((currentPage - 1) * 10, currentPage * 10).map((hotel) => (
               <div key={hotel.id} className="card-white overflow-hidden flex flex-col md:flex-row group border border-slate-200 hover:shadow-xl transition-all duration-300 rounded-3xl">
-                
+
                 {/* Hotel Cover Image & Frosted Glass Badges */}
                 <div className="w-full md:w-80 h-56 md:h-[230px] relative bg-slate-200 shrink-0 overflow-hidden">
                   <img
@@ -861,11 +810,10 @@ const HotelSearch = () => {
                   <button
                     type="button"
                     onClick={(e) => handleToggleWishlist(e, hotel)}
-                    className={`absolute top-3 right-3 p-2.5 rounded-full backdrop-blur-md shadow-lg transition-all duration-300 z-10 cursor-pointer ${
-                      userWishlist.includes(hotel.id)
-                        ? 'bg-rose-600 text-white hover:bg-rose-700 scale-105'
-                        : 'bg-slate-900/60 text-white hover:bg-rose-600 hover:text-white'
-                    }`}
+                    className={`absolute top-3 right-3 p-2.5 rounded-full backdrop-blur-md shadow-lg transition-all duration-300 z-10 cursor-pointer ${userWishlist.includes(hotel.id)
+                      ? 'bg-rose-600 text-white hover:bg-rose-700 scale-105'
+                      : 'bg-slate-900/60 text-white hover:bg-rose-600 hover:text-white'
+                      }`}
                     title={userWishlist.includes(hotel.id) ? 'Remove from Wishlist' : 'Save to Wishlist'}
                   >
                     <Heart className={`w-4 h-4 ${userWishlist.includes(hotel.id) ? 'fill-current' : ''}`} />
@@ -874,7 +822,7 @@ const HotelSearch = () => {
 
                 {/* Info Body */}
                 <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
-                  
+
                   <div className="space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -972,7 +920,7 @@ const HotelSearch = () => {
       {showFilterModal && (
         <div className="fixed inset-0 z-[999] bg-slate-950/60 backdrop-blur-xs flex justify-end animate-fade-in">
           <div className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col justify-between border-l border-slate-200 animate-slide-left">
-            
+
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
@@ -995,7 +943,7 @@ const HotelSearch = () => {
 
             {/* Modal Scrollable Body */}
             <div className="p-6 overflow-y-auto flex-grow space-y-6">
-              
+
               {/* 1. Destination Search Box */}
               <div className="space-y-2">
                 <label className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
@@ -1045,11 +993,10 @@ const HotelSearch = () => {
                         key={cityObj.name}
                         type="button"
                         onClick={() => handleQuickCitySelect(cityObj.value)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-rose-600 text-white shadow-sm font-black'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                        }`}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${isSelected
+                          ? 'bg-rose-600 text-white shadow-sm font-black'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
                       >
                         {cityObj.name}
                       </button>

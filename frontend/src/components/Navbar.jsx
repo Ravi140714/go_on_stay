@@ -9,6 +9,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import NotificationBell from './NotificationBell';
+import { hotelService } from '../services';
 
 const destinationsList = [
   {
@@ -106,22 +107,70 @@ const Navbar = () => {
   const [activeLangTab, setActiveLangTab] = useState('language'); // 'language' | 'currency'
 
   // Interactive Search Bar State
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
-  const getTomorrowStr = () => new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTomorrowStr = (baseDateStr, offsetDays = 1) => {
+    let base;
+    if (baseDateStr && /^\d{4}-\d{2}-\d{2}$/.test(baseDateStr)) {
+      const [y, m, d] = baseDateStr.split('-').map(Number);
+      base = new Date(y, m - 1, d);
+    } else {
+      base = new Date();
+    }
+    base.setDate(base.getDate() + offsetDays);
+    const year = base.getFullYear();
+    const month = String(base.getMonth() + 1).padStart(2, '0');
+    const day = String(base.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   const [searchDestination, setSearchDestination] = useState('');
   const [searchCheckIn, setSearchCheckIn] = useState(getTodayStr());
-  const [searchCheckOut, setSearchCheckOut] = useState(getTomorrowStr());
+  const [searchCheckOut, setSearchCheckOut] = useState(getTomorrowStr(getTodayStr(), 1));
   const [searchRooms, setSearchRooms] = useState(1);
   const [searchAdults, setSearchAdults] = useState(2);
   const [searchChildren, setSearchChildren] = useState(0);
 
   const [activeNavSearchTab, setActiveNavSearchTab] = useState(null); // 'where' | 'when' | 'who' | null
+  const [dynamicCities, setDynamicCities] = useState([]);
   const navSearchRef = useRef(null);
   const profileDropdownRef = useRef(null);
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    fetchActiveCities();
+  }, []);
+
+  const fetchActiveCities = async () => {
+    try {
+      const data = await hotelService.getCities();
+      const list = Array.isArray(data) ? data : (data?.results || []);
+      setDynamicCities(list || []);
+    } catch (e) {
+      setDynamicCities([]);
+    }
+  };
+
+  const activeDestinations = dynamicCities.length > 0
+    ? dynamicCities.map((cityName) => {
+        const found = destinationsList.find((d) => d.name.toLowerCase() === cityName.toLowerCase());
+        return found || {
+          name: cityName,
+          state: 'India',
+          desc: `Stays & suites in ${cityName}`,
+          icon: Building2,
+          color: 'bg-rose-50 text-rose-600'
+        };
+      })
+    : [];
 
   useEffect(() => {
     const handleScroll = () => {
@@ -174,13 +223,34 @@ const Navbar = () => {
     setDropdownOpen(false);
   }, [location.pathname, location.search]);
 
+  const handleSearchCheckInChange = (newVal) => {
+    const today = getTodayStr();
+    const validIn = !newVal || newVal < today ? today : newVal;
+    setSearchCheckIn(validIn);
+    if (!searchCheckOut || searchCheckOut <= validIn) {
+      setSearchCheckOut(getTomorrowStr(validIn, 1));
+    }
+  };
+
+  const handleSearchCheckOutChange = (newVal) => {
+    const minOut = getTomorrowStr(searchCheckIn, 1);
+    if (!newVal || newVal <= searchCheckIn) {
+      setSearchCheckOut(minOut);
+    } else {
+      setSearchCheckOut(newVal);
+    }
+  };
+
   const handleNavSearchSubmit = (e) => {
     if (e) e.preventDefault();
     setActiveNavSearchTab(null);
+    const today = getTodayStr();
+    const validIn = searchCheckIn && searchCheckIn >= today ? searchCheckIn : today;
+    const validOut = searchCheckOut && searchCheckOut > validIn ? searchCheckOut : getTomorrowStr(validIn, 1);
     const params = new URLSearchParams({
       city: searchDestination || 'Ahmedabad',
-      check_in: searchCheckIn,
-      check_out: searchCheckOut,
+      check_in: validIn,
+      check_out: validOut,
       rooms: searchRooms.toString(),
       guests: (searchAdults + searchChildren).toString()
     });
@@ -188,10 +258,9 @@ const Navbar = () => {
   };
 
   const handleQuickPresetDays = (days) => {
-    const start = new Date();
-    const end = new Date(Date.now() + days * 86400000);
-    setSearchCheckIn(start.toISOString().split('T')[0]);
-    setSearchCheckOut(end.toISOString().split('T')[0]);
+    const today = getTodayStr();
+    setSearchCheckIn(today);
+    setSearchCheckOut(getTomorrowStr(today, days));
   };
 
   const handleLogout = () => {
@@ -329,33 +398,40 @@ const Navbar = () => {
                 </div>
 
                 <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                  {destinationsList.map((dest) => {
-                    const IconComp = dest.icon;
-                    const isSelected = searchDestination === dest.name;
-                    return (
-                      <div
-                        key={dest.name}
-                        onClick={() => {
-                          setSearchDestination(dest.name);
-                          setActiveNavSearchTab('when');
-                        }}
-                        className={`flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer transition-all ${
-                          isSelected ? 'bg-rose-50 border border-rose-200' : 'hover:bg-slate-50 border border-transparent'
-                        }`}
-                      >
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${dest.color}`}>
-                          <IconComp className="w-4 h-4" />
-                        </div>
-                        <div className="flex-grow min-w-0">
-                          <div className="flex items-center justify-between">
-                            <h5 className="text-xs font-black text-slate-900 truncate">{dest.name}, {dest.state}</h5>
-                            {isSelected && <Check className="w-4 h-4 text-rose-600 shrink-0" />}
+                  {activeDestinations.length > 0 ? (
+                    activeDestinations.map((dest) => {
+                      const IconComp = dest.icon;
+                      const isSelected = searchDestination === dest.name;
+                      return (
+                        <div
+                          key={dest.name}
+                          onClick={() => {
+                            setSearchDestination(dest.name);
+                            setActiveNavSearchTab('when');
+                          }}
+                          className={`flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer transition-all ${
+                            isSelected ? 'bg-rose-50 border border-rose-200' : 'hover:bg-slate-50 border border-transparent'
+                          }`}
+                        >
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${dest.color}`}>
+                            <IconComp className="w-4 h-4" />
                           </div>
-                          <p className="text-[10px] text-slate-500 font-medium truncate">{dest.desc}</p>
+                          <div className="flex-grow min-w-0">
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-xs font-black text-slate-900 truncate">{dest.name}, {dest.state}</h5>
+                              {isSelected && <Check className="w-4 h-4 text-rose-600 shrink-0" />}
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium truncate">{dest.desc}</p>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  ) : (
+                    <div className="py-6 text-center space-y-1">
+                      <MapPin className="w-6 h-6 text-slate-300 mx-auto" />
+                      <p className="text-xs font-bold text-slate-500">No destinations available</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -382,10 +458,11 @@ const Navbar = () => {
                     <input
                       id="navbar_search_checkin"
                       type="date"
+                      min={getTodayStr()}
                       value={searchCheckIn}
                       onClick={(e) => { try { e.target.showPicker(); } catch (err) {} }}
                       onFocus={(e) => { try { e.target.showPicker(); } catch (err) {} }}
-                      onChange={(e) => setSearchCheckIn(e.target.value)}
+                      onChange={(e) => handleSearchCheckInChange(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 cursor-pointer"
                     />
                   </div>
@@ -400,10 +477,11 @@ const Navbar = () => {
                     <input
                       id="navbar_search_checkout"
                       type="date"
+                      min={getTomorrowStr(searchCheckIn, 1)}
                       value={searchCheckOut}
                       onClick={(e) => { try { e.target.showPicker(); } catch (err) {} }}
                       onFocus={(e) => { try { e.target.showPicker(); } catch (err) {} }}
-                      onChange={(e) => setSearchCheckOut(e.target.value)}
+                      onChange={(e) => handleSearchCheckOutChange(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 cursor-pointer"
                     />
                   </div>

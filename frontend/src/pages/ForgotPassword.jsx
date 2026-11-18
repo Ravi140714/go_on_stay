@@ -5,6 +5,7 @@ import {
   CheckCircle2, ArrowRight, ArrowLeft, RefreshCw, Sparkles, Lock
 } from 'lucide-react';
 import api from '../services/api';
+import { authService } from '../services';
 import { useAuth } from '../context/AuthContext';
 import { parseApiError } from '../utils/errorHandler';
 import FieldError from '../components/FieldError';
@@ -50,11 +51,11 @@ const ForgotPassword = () => {
 
     setLoading(true);
     try {
-      const res = await api.post('/users/forgot-password/', { identifier: identifier.trim() });
-      setEmail(res.data.email);
-      setMaskedEmail(res.data.masked_email || res.data.email);
-      if (res.data.dev_hint_otp) setDevHintOtp(res.data.dev_hint_otp);
-      showToast(res.data.message || `OTP sent to ${res.data.masked_email}`, 'success');
+      const data = await authService.forgotPassword({ identifier: identifier.trim() });
+      setEmail(data.email);
+      setMaskedEmail(data.masked_email || data.email);
+      if (data.dev_hint_otp) setDevHintOtp(data.dev_hint_otp);
+      showToast(data.message || `OTP sent to ${data.masked_email}`, 'success');
       setStep(2);
       setCountdown(60);
     } catch (err) {
@@ -80,11 +81,11 @@ const ForgotPassword = () => {
 
     setLoading(true);
     try {
-      const res = await api.post('/users/verify-otp/', {
+      const data = await authService.verifyOtp({
         email: email,
         otp: otp.trim()
       });
-      showToast(res.data.message || 'OTP code verified successfully!', 'success');
+      showToast(data.message || 'OTP code verified successfully!', 'success');
       setStep(3);
     } catch (err) {
       const parsed = parseApiError(err, 'Invalid or expired OTP code. Please try again.');
@@ -101,7 +102,7 @@ const ForgotPassword = () => {
     setFieldErrors({});
     setLoading(true);
     try {
-      const res = await api.post('/users/forgot-password/', { identifier: email || identifier });
+      await authService.forgotPassword({ identifier: email || identifier });
       showToast(`A fresh verification code was sent to ${maskedEmail || email}.`, 'success');
       setCountdown(60);
     } catch (err) {
@@ -141,14 +142,14 @@ const ForgotPassword = () => {
 
     setLoading(true);
     try {
-      const res = await api.post('/users/reset-password/', {
+      const data = await authService.resetPassword({
         email: email,
         otp: otp.trim(),
         new_password: newPassword,
         confirm_password: confirmPassword,
       });
 
-      showToast(res.data.message || '🎉 Password reset successfully!', 'success');
+      showToast(data.message || '🎉 Password reset successfully!', 'success');
       setStep(4); // Success screen
     } catch (err) {
       const parsed = parseApiError(err, 'Failed to reset password. Please request a new OTP.');

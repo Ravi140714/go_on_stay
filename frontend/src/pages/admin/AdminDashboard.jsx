@@ -8,6 +8,16 @@ import {
   Landmark, Clock, FileText, ExternalLink, HelpCircle, AlertTriangle, Eye, ShieldAlert, Wallet, Bell, MessageSquare
 } from 'lucide-react';
 import api from '../../services/api';
+import {
+  adminUserService,
+  adminHotelService,
+  adminBookingService,
+  adminPaymentService,
+  adminRefundService,
+  adminCouponService,
+  adminDashboardService,
+  ownerEarningService
+} from '../../services';
 import { useAuth } from '../../context/AuthContext';
 import { formatDisplayDate } from '../../utils/dateUtils';
 import Sidebar from '../../components/Sidebar';
@@ -217,72 +227,28 @@ const AdminDashboard = () => {
         usersRes, hotelsRes, bookingsRes, paymentsRes, couponsRes,
         settlementsRes, providerRes, settingsRes
       ] = await Promise.allSettled([
-        api.get('/users/all/'),
-        api.get('/hotels/?page_size=1000&sort_by=newest'),
-        api.get('/bookings/?page_size=1000'),
-        api.get('/payments/admin/all/?page_size=1000'),
-        api.get('/coupons/'),
-        api.get('/payments/settlements/'),
-        api.get('/payments/admin/provider-setup-status/'),
-        api.get('/payments/settings/')
+        adminUserService.getAllUsers(),
+        adminHotelService.getAllHotels(),
+        adminBookingService.getAllBookings(),
+        adminPaymentService.getAllPayments(),
+        adminCouponService.getAllCoupons(),
+        ownerEarningService.getSettlements(),
+        adminDashboardService.getProviderSetupStatus(),
+        adminDashboardService.getPlatformSettings()
       ]);
 
-      if (usersRes.status === 'fulfilled') setUsersList(usersRes.value.data.results || usersRes.value.data);
-      if (hotelsRes.status === 'fulfilled') setHotelsList(hotelsRes.value.data.results || hotelsRes.value.data);
+      if (usersRes.status === 'fulfilled') setUsersList(usersRes.value?.results || usersRes.value || []);
+      if (hotelsRes.status === 'fulfilled') setHotelsList(hotelsRes.value?.results || hotelsRes.value || []);
 
-      let rawBookings = bookingsRes.status === 'fulfilled' ? (bookingsRes.value.data.results || bookingsRes.value.data || []) : [];
-      let rawSettlements = settlementsRes.status === 'fulfilled' ? (settlementsRes.value.data?.results || []) : [];
-
-      try {
-        const localRefunds = JSON.parse(localStorage.getItem('bmr_admin_refunds') || '{}');
-        const checkIsRef = (keys) => {
-          for (const k of keys) {
-            if (!k) continue;
-            const strK = String(k).trim();
-            const clean = strK.replace(/^#/, '');
-            if (localRefunds[strK] || localRefunds[clean] || localRefunds[`#${clean}`]) {
-              return localRefunds[strK] || localRefunds[clean] || localRefunds[`#${clean}`];
-            }
-          }
-          return null;
-        };
-
-        rawBookings = rawBookings.map(b => {
-          const ref = checkIsRef([b.id, b.booking_id, b.booking_reference]);
-          if (ref) {
-            return {
-              ...b,
-              payment_status: 'REFUNDED',
-              refund_status: 'REFUNDED',
-              status: 'REFUNDED',
-              utr: ref.utr || b.utr,
-              refund_arn: ref.refund_arn || b.refund_arn
-            };
-          }
-          return b;
-        });
-
-        rawSettlements = rawSettlements.map(s => {
-          const ref = checkIsRef([s.booking_id, s.booking, s.id, s.settlement_id]);
-          if (ref) {
-            return {
-              ...s,
-              status: 'REFUNDED',
-              refund_status: 'REFUNDED',
-              is_eligible: false,
-              utr: ref.utr || s.utr
-            };
-          }
-          return s;
-        });
-      } catch (e) {}
+      let rawBookings = bookingsRes.status === 'fulfilled' ? (bookingsRes.value?.results || bookingsRes.value || []) : [];
+      let rawSettlements = settlementsRes.status === 'fulfilled' ? (settlementsRes.value?.results || []) : [];
 
       setBookingsList(rawBookings);
-      if (paymentsRes.status === 'fulfilled') setPaymentsList(paymentsRes.value.data.results || paymentsRes.value.data);
-      if (couponsRes.status === 'fulfilled') setCouponsList(couponsRes.value.data.results || couponsRes.value.data);
+      if (paymentsRes.status === 'fulfilled') setPaymentsList(paymentsRes.value?.results || paymentsRes.value || []);
+      if (couponsRes.status === 'fulfilled') setCouponsList(couponsRes.value?.results || couponsRes.value || []);
 
       if (settlementsRes.status === 'fulfilled') {
-        const sData = settlementsRes.value.data;
+        const sData = settlementsRes.value || {};
         setSettlementsList(rawSettlements);
         setSettlementSummary(sData.summary || {});
         const hSumm = sData.hotels_summary || [];
@@ -296,26 +262,26 @@ const AdminDashboard = () => {
         }
       }
       if (providerRes.status === 'fulfilled') {
-        setProviderStatus(providerRes.value.data);
+        setProviderStatus(providerRes.value);
       }
       if (settingsRes.status === 'fulfilled') {
-        setPlatformSettings(settingsRes.value.data);
-        if (settingsRes.value.data.payout_hold_days) {
-          setEditingHoldDays(settingsRes.value.data.payout_hold_days.toString());
+        setPlatformSettings(settingsRes.value);
+        if (settingsRes.value?.payout_hold_days) {
+          setEditingHoldDays(settingsRes.value.payout_hold_days.toString());
         }
       }
 
       // API 7: GET /api/payments/admin/refunds/?status={status}&refund_mode={refund_mode}
       try {
-        const refundQueryParams = new URLSearchParams();
+        const refundParams = {};
         if (refundFilterStatus && refundFilterStatus !== 'ALL') {
-          refundQueryParams.append('status', refundFilterStatus);
+          refundParams.status = refundFilterStatus;
         }
         if (refundModeFilter && refundModeFilter !== 'ALL') {
-          refundQueryParams.append('refund_mode', refundModeFilter);
+          refundParams.refund_mode = refundModeFilter;
         }
-        const aRefundsRes = await api.get(`/payments/admin/refunds/?${refundQueryParams.toString()}`);
-        const rResults = aRefundsRes.data?.results || (Array.isArray(aRefundsRes.data) ? aRefundsRes.data : []);
+        const aRefundsData = await adminRefundService.getRefunds(refundParams);
+        const rResults = aRefundsData?.results || (Array.isArray(aRefundsData) ? aRefundsData : []);
         setAdminRefundsApiList(rResults);
       } catch (aRefErr) {
         console.warn('API 7 /payments/admin/refunds/ notice:', aRefErr);
@@ -871,41 +837,8 @@ const AdminDashboard = () => {
             : Math.max(0, gross - refundAmt))
     );
 
-    // Client cached customer submission lookup (safe fallback)
-    if (!rawAccNumber || !ifsc) {
-      try {
-        const stored = JSON.parse(localStorage.getItem('bmr_customer_refund_bank_details') || '{}');
-        const matched = stored[rawBId] ||
-                        stored[cleanBId] ||
-                        (refCode && stored[refCode]) ||
-                        (refCode && stored[`#${refCode}`]) ||
-                        (booking.id && stored[String(booking.id)]) ||
-                        (guestEmail && stored[guestEmail]) ||
-                        (guestName && stored[guestName.toLowerCase()]) ||
-                        stored['latest'] ||
-                        Object.values(stored).find(r => 
-                          (r.booking_id && (String(r.booking_id).replace(/^#/, '') === cleanBId || String(r.booking_id).replace(/^#/, '') === refCode)) ||
-                          (r.guest_email && guestEmail && r.guest_email.toLowerCase() === guestEmail) ||
-                          (r.customer_name && guestName && r.customer_name.toLowerCase() === guestName.toLowerCase())
-                        );
-
-        if (matched) {
-          if (!rawAccNumber) rawAccNumber = sanitizeStr(matched.account_number || matched.customer_account_number);
-          if (!holderName || holderName === 'Guest User') holderName = sanitizeStr(matched.account_holder_name || matched.customer_account_holder || holderName);
-          if (!bankName) bankName = sanitizeStr(matched.bank_name || matched.customer_bank_name);
-          if (!ifsc) ifsc = sanitizeStr(matched.ifsc_code || matched.customer_ifsc_code).toUpperCase();
-          if (!upiId) upiId = sanitizeStr(matched.upi_id || matched.customer_upi_id);
-          if (!reason || reason === 'Requested by guest') reason = sanitizeStr(matched.cancellation_reason || reason);
-          if (!customerName || customerName === 'Guest User') customerName = sanitizeStr(matched.customer_name || customerName);
-          if (!refundMode || refundMode === 'ORIGINAL_SOURCE') {
-            refundMode = matched.refund_mode ? matched.refund_mode.toUpperCase() : (rawAccNumber ? 'BANK_TRANSFER' : (upiId ? 'UPI' : 'ORIGINAL_SOURCE'));
-          }
-        }
-      } catch (err) {
-        console.warn('Error reading stored refund details:', err);
-      }
-    }
-
+    // Use real gateway UTR and Payout ID from backend response
+    // If backend has not yet processed the payout, retain genuine status without fabricating synthetic UTRs
     const hasBank = !!(rawAccNumber && ifsc);
     const hasUpi = !!upiId;
     const paymentId = sanitizeStr(
@@ -937,32 +870,13 @@ const AdminDashboard = () => {
     };
   };
 
-  const getOwnerApproval = (bookingId) => {
-    try {
-      const existing = JSON.parse(localStorage.getItem('bmr_owner_cancellation_approvals') || '{}');
-      if (!bookingId) return null;
-      if (typeof bookingId === 'object') {
-        const keys = [
-          bookingId.id,
-          bookingId.booking_id,
-          bookingId.booking_reference,
-          bookingId.reference_id,
-          bookingId.booking
-        ].filter(Boolean).map(String);
-        for (const k of keys) {
-          const clean = k.replace(/^#/, '');
-          if (existing[k] || existing[clean] || existing[`#${clean}`]) {
-            return existing[k] || existing[clean] || existing[`#${clean}`];
-          }
-        }
-        return null;
-      }
-      const raw = String(bookingId);
-      const clean = raw.replace(/^#/, '');
-      return existing[raw] || existing[clean] || existing[`#${clean}`] || null;
-    } catch (e) {
-      return null;
+  const getOwnerApproval = (bookingOrId) => {
+    if (!bookingOrId) return null;
+    if (typeof bookingOrId === 'object') {
+      const oStatus = bookingOrId.owner_approval_status || bookingOrId.cancellation_breakdown?.owner_approval?.status;
+      if (oStatus) return { status: String(oStatus).toUpperCase() };
     }
+    return null;
   };
 
   const checkOwnerApprovalStatus = (b) => {
@@ -1029,6 +943,10 @@ const AdminDashboard = () => {
       showToast('⚠️ Hotel owner has rejected this customer cancellation. Super Admin cannot process refund for rejected cancellations.', 'error');
       return;
     }
+    if (ownerStatus !== 'APPROVED') {
+      showToast('⚠️ Hotel owner must approve this customer cancellation before Super Admin can process the refund.', 'warning');
+      return;
+    }
 
     setProcessingAdminRefund(true);
     setLastPayoutResult(null);
@@ -1050,11 +968,10 @@ const AdminDashboard = () => {
         reason: refundAdminNotes.trim() || 'Super Admin approved cancellation refund to original payment source'
       };
 
-      const res = await api.post('/payments/refund/', payload);
-      const postData = res?.data || {};
+      const postData = await adminRefundService.processRefund(payload);
 
-      const actualPayoutId = postData.refund_id || postData.id || `rfnd_${Date.now()}`;
-      const actualStatus = (postData.status || 'REFUNDED').toUpperCase();
+      const actualPayoutId = postData.refund_id || postData.id || postData.razorpay_refund_id || null;
+      const actualStatus = (postData.status || (postData.success ? 'REFUNDED' : 'PENDING')).toUpperCase();
 
       const resultObj = {
         payout_id: actualPayoutId,
@@ -1083,48 +1000,10 @@ const AdminDashboard = () => {
         return s;
       }));
 
-      // Persist admin refund execution across all ID variants
-      try {
-        const existingRefunds = JSON.parse(localStorage.getItem('bmr_admin_refunds') || '{}');
-        const refundRecord = {
-          status: 'REFUNDED',
-          refund_amount: refundAmount,
-          refund_arn: actualPayoutId,
-          refunded_at: new Date().toISOString()
-        };
-
-        const allKeysToSave = new Set([
-          String(bookingId),
-          String(bookingId).replace(/^#/, ''),
-          `#${String(bookingId).replace(/^#/, '')}`,
-          String(selectedRefundBooking?.id || ''),
-          String(selectedRefundBooking?.booking_id || ''),
-          String(selectedRefundBooking?.booking_id || '').replace(/^#/, ''),
-          `#${String(selectedRefundBooking?.booking_id || '').replace(/^#/, '')}`,
-          String(selectedRefundBooking?.booking_reference || ''),
-          String(selectedRefundBooking?.booking_reference || '').replace(/^#/, ''),
-          String(selectedRefundBooking?.settlement_id || ''),
-          String(selectedRefundBooking?.earning_id || ''),
-          String(selectedRefundBooking?._source_earning_id || ''),
-          String(selectedRefundBooking?._source_earning_booking_id || ''),
-          String(selectedRefundBooking?._source_earning_booking || '')
-        ]);
-
-        allKeysToSave.forEach(key => {
-          if (key && key !== '#' && key !== 'undefined') {
-            existingRefunds[key] = refundRecord;
-          }
-        });
-
-        localStorage.setItem('bmr_admin_refunds', JSON.stringify(existingRefunds));
-      } catch (err) {
-        console.warn('Failed to cache refund status:', err);
-      }
-
-      setTimeout(() => {
+      setTimeout(async () => {
         setShowProcessRefundModal(false);
-        fetchAdminData();
-      }, 1200);
+        await fetchAdminData();
+      }, 1000);
 
     } catch (err) {
       console.error('Refund execution error:', err);
@@ -1166,45 +1045,39 @@ const AdminDashboard = () => {
     try {
       const res = await api.get(`/payments/payouts/customer/${encodeURIComponent(bId)}/?sync=true`);
       const d = res.data || {};
-      const actualStatus = (d.status || d.payout_status || d.refund_status || '').toUpperCase();
+      const actualStatus = (d.status || d.payout_status || d.refund_status || 'PENDING').toUpperCase();
       const actualPayoutId = d.payout_id || d.id || d.razorpay_payout_id || null;
       const actualUtr = d.utr || d.bank_reference || null;
-      const actualFailure = d.failure_reason || d.error || d.message || null;
+      const actualFailure = d.failure_reason || d.error || null;
 
-      const finalUtr = actualUtr || `UTR${Date.now().toString().slice(-8)}${Math.floor(1000 + Math.random() * 9000)}`;
-      const finalPayoutId = actualPayoutId || d.payout_id || d.id || `pout_${Date.now()}`;
+      const isSuccess = actualStatus === 'PROCESSED' || actualStatus === 'REFUNDED';
+      const isFailed = actualStatus === 'FAILED' || actualStatus === 'REFUND_FAILED';
 
       setLastPayoutResult(prev => ({
         ...(prev || {}),
-        payout_id: finalPayoutId,
-        status: 'PROCESSED',
-        utr: finalUtr,
-        failure_reason: null,
-        message: d.message || `Payout verified: PROCESSED (UTR: ${finalUtr})`,
+        payout_id: actualPayoutId,
+        status: actualStatus,
+        utr: actualUtr,
+        failure_reason: isFailed ? (actualFailure || 'Payout transfer failed') : null,
+        message: d.message || `Payout Status: ${actualStatus}${actualUtr ? ` (UTR: ${actualUtr})` : ''}`,
         timestamp: new Date().toISOString()
       }));
 
-      showToast(`✅ Payout Successful! ID: ${finalPayoutId} (UTR: ${finalUtr})`, 'success');
+      if (isSuccess) {
+        showToast(`✅ Payout Verified: ${actualStatus}${actualUtr ? ` (UTR: ${actualUtr})` : ''}`, 'success');
+      } else if (isFailed) {
+        showToast(`❌ Payout Failed: ${actualFailure || 'Gateway transfer rejected'}`, 'error');
+      } else {
+        showToast(`ℹ️ Payout Status: ${actualStatus}`, 'info');
+      }
       setPayoutIdempotencyKey('');
 
-      // Persist to localStorage
-      try {
-        const existingRefunds = JSON.parse(localStorage.getItem('bmr_admin_refunds') || '{}');
-        existingRefunds[String(bId)] = {
-          status: 'REFUNDED',
-          refund_arn: finalPayoutId,
-          utr: finalUtr,
-          refunded_at: new Date().toISOString()
-        };
-        localStorage.setItem('bmr_admin_refunds', JSON.stringify(existingRefunds));
-      } catch (e) {}
-
-      setTimeout(() => {
+      setTimeout(async () => {
         setShowProcessRefundModal(false);
         setSelectedRefundBooking(null);
         setRefundAdminNotes('');
-      }, 1500);
-      await fetchAdminData();
+        await fetchAdminData();
+      }, 1000);
     } catch (err) {
       console.warn('API 5 Customer payout status check error:', err);
       const errMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Status check failed';
@@ -1268,9 +1141,7 @@ const AdminDashboard = () => {
     if (targetBooking) {
       targetBooking = {
         ...targetBooking,
-        owner_approval_status: 'APPROVED',
-        cancellation_status: 'OWNER_APPROVED',
-        status: targetBooking.status === 'OWNER_REJECTED' ? targetBooking.status : 'OWNER_APPROVED',
+        owner_approval_status: targetBooking.owner_approval_status || checkOwnerApprovalStatus(targetBooking),
         settlement_id: earning.id,
         _source_earning_id: earning.id,
         _source_earning_booking_id: earning.booking_id,
@@ -1298,13 +1169,6 @@ const AdminDashboard = () => {
         _source_earning_booking: earning.booking
       };
     }
-
-    try {
-      const existingApprovals = JSON.parse(localStorage.getItem('bmr_owner_cancellation_approvals') || '{}');
-      existingApprovals[rawBId] = { status: 'APPROVED', updated_at: new Date().toISOString() };
-      existingApprovals[cleanBId] = { status: 'APPROVED', updated_at: new Date().toISOString() };
-      localStorage.setItem('bmr_owner_cancellation_approvals', JSON.stringify(existingApprovals));
-    } catch (e) {}
 
     // API 4: GET /api/payments/refunds/{booking_id}/
     setFetchingBackendRefundDetails(true);
@@ -1743,32 +1607,7 @@ const AdminDashboard = () => {
     const tpStatus = (tBooking?.payment_status || '').toUpperCase();
     const trStatus = (tBooking?.refund_status || '').toUpperCase();
 
-    if (eStat === 'REFUNDED' || ebStat === 'REFUNDED' || tbStatus === 'REFUNDED' || tpStatus === 'REFUNDED' || trStatus === 'REFUNDED') {
-      return true;
-    }
-
-    try {
-      const localRefunds = JSON.parse(localStorage.getItem('bmr_admin_refunds') || '{}');
-      const candidateKeys = [
-        earning?.id,
-        earning?.booking_id,
-        earning?.booking,
-        earning?.settlement_id,
-        earning?._source_earning_id,
-        tBooking?.id,
-        tBooking?.booking_id,
-        tBooking?.booking_reference,
-        tBooking?._source_earning_id
-      ].filter(Boolean).map(String);
-
-      for (const key of candidateKeys) {
-        const clean = key.replace(/^#/, '');
-        if (localRefunds[key] || localRefunds[clean] || localRefunds[`#${clean}`]) {
-          return true;
-        }
-      }
-    } catch (e) {}
-    return false;
+    return eStat === 'REFUNDED' || ebStat === 'REFUNDED' || tbStatus === 'REFUNDED' || tpStatus === 'REFUNDED' || trStatus === 'REFUNDED';
   };
 
   // Helper to determine if a stay/settlement is cancelled, reversed or refunded
@@ -1906,12 +1745,45 @@ const AdminDashboard = () => {
       const s = (b.status || b.booking_status || '').toUpperCase();
       const p = (b.payment_status || '').toUpperCase();
       const r = (b.refund_status || '').toUpperCase();
-      const hasRefundTag = b.refund_amount !== undefined || b.refund_bank_details || b.bank_details || b.cancellation_requested_at || b.cancellation_reason || b.owner_approval_status;
-      const isCancelState = ['CANCELLATION_REQUESTED', 'OWNER_APPROVED', 'OWNER_REJECTED', 'REFUND_PENDING', 'REFUND_PROCESSING', 'REFUNDED', 'REFUND_FAILED'].includes(s) ||
-                            ['REFUND_PENDING', 'REFUNDED', 'REFUND_PROCESSING'].includes(p) ||
-                            ['PENDING', 'PROCESSED', 'FAILED', 'REFUNDED', 'PROCESSING'].includes(r) ||
-                            (s === 'CANCELLED' && hasRefundTag);
-      return isCancelState || hasRefundTag;
+
+      // Explicit cancellation status on the booking
+      const isExplicitCancelStatus = [
+        'CANCELLATION_REQUESTED',
+        'OWNER_APPROVED',
+        'OWNER_REJECTED',
+        'REFUND_PENDING',
+        'REFUND_PROCESSING',
+        'REFUNDED',
+        'REFUND_FAILED'
+      ].includes(s);
+
+      // Explicit refund status on the payment
+      const isExplicitRefundPayment = ['REFUND_PENDING', 'REFUNDED', 'REFUND_PROCESSING', 'REFUND_FAILED'].includes(p);
+
+      // Explicit refund record from payment gateway / refunds table
+      const isExplicitRefundRecord = Boolean(r && ['PENDING', 'PROCESSED', 'FAILED', 'REFUNDED', 'PROCESSING'].includes(r));
+
+      // Explicit customer cancellation evidence
+      const hasCancellationEvidence = Boolean(
+        b.cancellation_requested_at ||
+        b.cancelled_at ||
+        (b.cancellation_reason && typeof b.cancellation_reason === 'string' && b.cancellation_reason.trim() !== '') ||
+        (b.cancellation_breakdown && typeof b.cancellation_breakdown === 'object' && Object.keys(b.cancellation_breakdown).length > 0)
+      );
+
+      // Cancelled booking that had a payment or cancellation record
+      const isPaidOrVerifiedCancelled = s === 'CANCELLED' && (p === 'PAID' || isExplicitRefundPayment || hasCancellationEvidence);
+
+      // Bookings that are normal active stays (CONFIRMED, CHECKED_IN, CHECKED_OUT, NO_SHOW, PENDING_PAYMENT)
+      // and have NO cancellation evidence or refund status must NEVER be shown as refund candidates
+      if (['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'NO_SHOW', 'PENDING_PAYMENT', 'PENDING', 'COMPLETED'].includes(s) &&
+          !isExplicitRefundPayment &&
+          !isExplicitRefundRecord &&
+          !hasCancellationEvidence) {
+        return false;
+      }
+
+      return isExplicitCancelStatus || isExplicitRefundPayment || isExplicitRefundRecord || isPaidOrVerifiedCancelled || (hasCancellationEvidence && p === 'PAID');
     });
   })();
 
@@ -4136,7 +4008,7 @@ const AdminDashboard = () => {
                         const refundAmt = parseFloat(b.refund_amount !== undefined ? b.refund_amount : (b.cancellation_quote?.refund_amount || (grossAmt * 0.9)));
                         const feeAmt = parseFloat(b.cancellation_fee !== undefined ? b.cancellation_fee : (b.cancellation_quote?.cancellation_fee || (grossAmt - refundAmt)));
                         const refDetails = resolveCustomerRefundDetails(b);
-                        const canProcess = (isOwnerApproved || !isOwnerRejected) && !isRefunded && !isProcessing;
+                        const canProcess = isOwnerApproved && !isRefunded && !isProcessing;
 
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/80 transition-colors whitespace-nowrap">
@@ -4218,6 +4090,10 @@ const AdminDashboard = () => {
                               ) : isFailed ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-red-100 text-red-800 border border-red-300" title={b.refund_failure_reason}>
                                   <AlertTriangle className="w-3 h-3" /> FAILED
+                                </span>
+                              ) : isOwnerRejected ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-300">
+                                  <XCircle className="w-3 h-3" /> REJECTED
                                 </span>
                               ) : isOwnerApproved ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">

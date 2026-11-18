@@ -3,6 +3,7 @@ import {
   UserCheck, UserX, Clock, Search, CalendarCheck, Hotel, CheckCircle2, AlertCircle, Building2
 } from 'lucide-react';
 import api from '../../services/api';
+import { ownerBookingService } from '../../services';
 import { useAuth } from '../../context/AuthContext';
 import { formatDisplayDate } from '../../utils/dateUtils';
 import Pagination from '../../components/Pagination';
@@ -26,8 +27,8 @@ const StaffDashboard = () => {
   const fetchStaffBookings = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/bookings/?page_size=1000');
-      setBookings(res.data.results || res.data);
+      const data = await ownerBookingService.getOwnerBookings();
+      setBookings(data.results || data);
     } catch (err) {
       console.error('Failed to load staff bookings:', err);
       showToast('Failed to load booking reservations.', 'error');
@@ -38,8 +39,8 @@ const StaffDashboard = () => {
 
   const handleCheckIn = async (bookingId) => {
     try {
-      const res = await api.post(`/bookings/${bookingId}/check-in/`);
-      showToast(res.data.message || 'Guest checked in successfully!');
+      const data = await ownerBookingService.staffCheckIn(bookingId);
+      showToast(data.message || 'Guest checked in successfully!');
       fetchStaffBookings();
     } catch (err) {
       const msg = err.response?.data?.error || 'Check-in failed.';
@@ -49,8 +50,8 @@ const StaffDashboard = () => {
 
   const handleCheckOut = async (bookingId) => {
     try {
-      const res = await api.post(`/bookings/${bookingId}/check-out/`);
-      showToast(res.data.message || 'Guest checked out successfully!');
+      const data = await ownerBookingService.staffCheckOut(bookingId);
+      showToast(data.message || 'Guest checked out successfully!');
       fetchStaffBookings();
     } catch (err) {
       const msg = err.response?.data?.error || 'Check-out failed.';
@@ -61,8 +62,8 @@ const StaffDashboard = () => {
   const handleNoShow = async (bookingId) => {
     if (!window.confirm('Mark this booking reservation as NO-SHOW?')) return;
     try {
-      const res = await api.post(`/bookings/${bookingId}/no-show/`);
-      showToast(res.data.message || 'Booking marked as NO-SHOW.');
+      const data = await ownerBookingService.markNoShow(bookingId);
+      showToast(data.message || 'Booking marked as NO-SHOW.');
       fetchStaffBookings();
     } catch (err) {
       const msg = err.response?.data?.error || 'Failed to update status.';

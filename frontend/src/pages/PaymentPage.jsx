@@ -5,6 +5,7 @@ import {
   CheckCircle, HelpCircle
 } from 'lucide-react';
 import api from '../services/api';
+import { paymentService } from '../services';
 import { useAuth } from '../context/AuthContext';
 import { parseApiError } from '../utils/errorHandler';
 
@@ -40,8 +41,8 @@ const PaymentPage = () => {
     setLoadingOrder(true);
     setShowFailModal(false);
     try {
-      const res = await api.post('/payments/create-order/', { booking_id: bId });
-      setPaymentOrder(res.data);
+      const orderData = await paymentService.createOrder(bId);
+      setPaymentOrder(orderData);
     } catch (err) {
       console.error('Failed to create Razorpay payment order:', err);
       const msg = err.response?.data?.error || 'Failed to initialize payment gateway order.';
@@ -88,7 +89,7 @@ const PaymentPage = () => {
         // Razorpay successful checkout callback - Verify server-side signature
         setVerifying(true);
         try {
-          const verifyRes = await api.post('/payments/verify/', {
+          const verifyData = await paymentService.verifyPayment({
             booking_id: paymentOrder.booking_id,
             razorpay_order_id: response.razorpay_order_id,
             razorpay_payment_id: response.razorpay_payment_id,
@@ -97,7 +98,7 @@ const PaymentPage = () => {
 
           showToast('Payment verified successfully! Reservation confirmed.');
           // Redirect directly to booking confirmation page with autoPrint flag enabled
-          navigate(`/booking-confirmation/${verifyRes.data.booking_id}?autoPrint=true`);
+          navigate(`/booking-confirmation/${verifyData.booking_id}?autoPrint=true`);
         } catch (err) {
           console.error('Signature verification error:', err);
           const msg = err.response?.data?.error || 'Server-side payment verification failed. Security signature invalid.';
@@ -151,8 +152,8 @@ const PaymentPage = () => {
     if (!bookingIdFromUrl) return;
     setRetrying(true);
     try {
-      const res = await api.post('/payments/retry/', { booking_id: bookingIdFromUrl });
-      setPaymentOrder(res.data);
+      const orderData = await paymentService.retryPayment(bookingIdFromUrl);
+      setPaymentOrder(orderData);
       setShowFailModal(false);
       setFailureMessage('');
       setFailureCode('');

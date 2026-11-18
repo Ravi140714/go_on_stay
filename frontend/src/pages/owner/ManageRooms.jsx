@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { BedDouble, Plus, ArrowLeft, Trash2, Edit, Users, Utensils, CheckCircle, IndianRupee, DoorClosed, CalendarCheck } from 'lucide-react';
 import api from '../../services/api';
+import { ownerHotelService, ownerRoomService, ownerBookingService } from '../../services';
 import { useAuth } from '../../context/AuthContext';
 
 const ManageRooms = () => {
@@ -20,15 +21,15 @@ const ManageRooms = () => {
 
   const fetchHotelAndRooms = async () => {
     try {
-      const [hotelRes, roomsRes, bookingsRes] = await Promise.all([
-        api.get(`/hotels/${hotelId}/`),
-        api.get(`/rooms/by-hotel/${hotelId}/`),
-        api.get('/bookings/?page_size=1000')
+      const [hotelData, roomsData, bookingsData] = await Promise.all([
+        ownerHotelService.getHotelDetail(hotelId),
+        ownerRoomService.getRoomsByHotel(hotelId),
+        ownerBookingService.getOwnerBookings()
       ]);
-      setHotel(hotelRes.data);
-      setRooms(roomsRes.data.results || roomsRes.data);
+      setHotel(hotelData);
+      setRooms(roomsData.results || roomsData);
       
-      const allBookings = bookingsRes.data.results || bookingsRes.data;
+      const allBookings = bookingsData.results || bookingsData;
       const hotelBookings = allBookings.filter(
         (b) => b.hotel.toString() === hotelId.toString() || b.hotel_details?.id?.toString() === hotelId.toString()
       );
@@ -44,7 +45,7 @@ const ManageRooms = () => {
   const handleDeleteRoom = async (roomId, title) => {
     if (!window.confirm(`Are you sure you want to delete room category "${title}"?`)) return;
     try {
-      await api.delete(`/rooms/${roomId}/`);
+      await ownerRoomService.deleteRoom(roomId);
       showToast(`Room category "${title}" deleted.`);
       setRooms(rooms.filter((r) => r.id !== roomId));
     } catch (err) {

@@ -5,6 +5,7 @@ import {
   ArrowLeft, User, Mail, Phone, KeyRound, CheckCircle2, Lock, Utensils, Clock, Sparkles, MapPin, Star
 } from 'lucide-react';
 import api from '../services/api';
+import { hotelService, roomService, bookingService, couponService } from '../services';
 import { useAuth } from '../context/AuthContext';
 import { formatDisplayDate } from '../utils/dateUtils';
 import { parseApiError } from '../utils/errorHandler';
@@ -15,17 +16,36 @@ const BookingPage = () => {
   const navigate = useNavigate();
   const { user, showToast } = useAuth();
 
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
-  const getTomorrowStr = () => {
+  const getTodayStr = () => {
     const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTomorrowStr = (baseDateStr) => {
+    let d;
+    if (baseDateStr && /^\d{4}-\d{2}-\d{2}$/.test(baseDateStr)) {
+      const [y, m, day] = baseDateStr.split('-').map(Number);
+      d = new Date(y, m - 1, day);
+    } else {
+      d = new Date();
+    }
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const hotelId = searchParams.get('hotel_id');
   const roomId = searchParams.get('room_id');
-  const checkIn = searchParams.get('check_in') || getTodayStr();
-  const checkOut = searchParams.get('check_out') || getTomorrowStr();
+  const todayStr = getTodayStr();
+  const rawCheckIn = searchParams.get('check_in') || todayStr;
+  const checkIn = rawCheckIn < todayStr ? todayStr : rawCheckIn;
+  const rawCheckOut = searchParams.get('check_out') || getTomorrowStr(checkIn);
+  const checkOut = rawCheckOut <= checkIn ? getTomorrowStr(checkIn) : rawCheckOut;
   const roomsCount = Math.max(1, parseInt(searchParams.get('rooms') || '1'));
   const guestsCount = Math.max(1, parseInt(searchParams.get('guests') || '2'));
 
@@ -61,8 +81,8 @@ const BookingPage = () => {
 
   const fetchAvailableCoupons = async () => {
     try {
-      const res = await api.get('/coupons/available/');
-      setAvailableCoupons(res.data.results || res.data || []);
+      const data = await couponService.getAvailableCoupons();
+      setAvailableCoupons(data.results || data || []);
     } catch (err) {
       console.warn('Failed to load available coupons:', err);
     }
@@ -87,49 +107,32 @@ const BookingPage = () => {
       return;
     }
     try {
-      const [hotelRes, roomRes, availabilityRes] = await Promise.all([
-        api.get(`/hotels/${hotelId}/`),
-        api.get(`/rooms/${roomId}/`),
-        api.get('/rooms/check-availability/', {
-          params: { room_id: roomId, check_in: checkIn, check_out: checkOut, rooms: roomsCount }
+      const [hotelData, roomData, availabilityData] = await Promise.all([
+        hotelService.getHotelById(hotelId),
+        roomService.getRoomById(roomId),
+        roomService.checkAvailability({
+          room_id: roomId, check_in: checkIn, check_out: checkOut, rooms: roomsCount
         }).catch(err => {
           console.warn('Check availability failed, fallback to default:', err);
-          return { data: null };
+          return null;
         })
       ]);
 
-      setHotel(hotelRes.data);
-      setRoom(roomRes.data);
+      setHotel(hotelData);
+      setRoom(roomData);
 
       let allocated = [];
-      if (availabilityRes.data && availabilityRes.data.room_numbers) {
-        const numbers = availabilityRes.data.room_numbers;
+      if (availabilityData && availabilityData.room_numbers && Array.isArray(availabilityData.room_numbers)) {
+        const numbers = availabilityData.room_numbers;
         setRoomNumbersList(numbers);
         const availables = numbers.filter(r => r.is_available).map(r => r.number);
         allocated = availables.slice(0, roomsCount);
-      } else if (roomRes.data) {
-        const defaultNums = roomRes.data.all_room_numbers || ['101', '102', '103', '104'];
-        setRoomNumbersList(defaultNums.map(n => ({ number: n, is_available: true })));
-      }
-
-      // Auto-allocate available room units from pool
-      if (allocated.length < roomsCount && roomRes.data) {
-        const defaultPool = roomRes.data.all_room_numbers || ['101', '102', '103', '104'];
-        for (const num of defaultPool) {
-          if (!allocated.includes(num)) {
-            allocated.push(num);
-          }
-          if (allocated.length >= roomsCount) break;
-        }
-      }
-
-      if (allocated.length < roomsCount) {
-        for (let idx = 1; allocated.length < roomsCount; idx++) {
-          const fallbackNum = `10${idx}`;
-          if (!allocated.includes(fallbackNum)) {
-            allocated.push(fallbackNum);
-          }
-        }
+      } else if (roomData && Array.isArray(roomData.all_room_numbers) && roomData.all_room_numbers.length > 0) {
+        const numbers = roomData.all_room_numbers;
+        setRoomNumbersList(numbers.map(n => ({ number: n, is_available: true })));
+        allocated = numbers.slice(0, roomsCount);
+      } else {
+        setRoomNumbersList([]);
       }
 
       setSelectedRoomNumbers(allocated);
@@ -188,14 +191,14 @@ const BookingPage = () => {
     if (!targetCode) return;
     setCouponLoading(true);
     try {
-      const res = await api.post('/coupons/apply/', {
+      const couponData = await couponService.applyCoupon({
         code: targetCode,
         amount: grossSubtotal
       });
-      setAppliedCoupon(res.data);
+      setAppliedCoupon(couponData);
       setCouponCode(targetCode);
-      const savedAmount = res.data.discount_amount || ((grossSubtotal * parseFloat(res.data.discount_percentage)) / 100);
-      showToast(`🎉 Coupon '${targetCode}' applied! Saved ₹${Math.round(savedAmount)} (${res.data.discount_percentage}% OFF)`, 'success');
+      const savedAmount = couponData.discount_amount || ((grossSubtotal * parseFloat(couponData.discount_percentage)) / 100);
+      showToast(`🎉 Coupon '${targetCode}' applied! Saved ₹${Math.round(savedAmount)} (${couponData.discount_percentage}% OFF)`, 'success');
     } catch (err) {
       const msg = err.response?.data?.error || 'Invalid or expired coupon code.';
       showToast(msg, 'error');
@@ -234,6 +237,16 @@ const BookingPage = () => {
       return;
     }
 
+    const today = getTodayStr();
+    if (checkIn < today) {
+      showToast('Check-in date cannot be in the past. Please select today or a future date.', 'error');
+      return;
+    }
+    if (checkOut <= checkIn) {
+      showToast('Check-out date must be after check-in date.', 'error');
+      return;
+    }
+
     let finalAllocated = [...selectedRoomNumbers];
     if (finalAllocated.length < roomsCount) {
       const avail = roomNumbersList.filter(r => r.is_available).map(r => r.number);
@@ -267,8 +280,7 @@ const BookingPage = () => {
         discount: discount,
       };
 
-      const res = await api.post('/bookings/', bookingPayload);
-      const createdBooking = res.data;
+      const createdBooking = await bookingService.createBooking(bookingPayload);
 
       showToast(`Reservation ${createdBooking.booking_id} (${selectedRoomNumbers.join(', ')}) initiated. Proceeding to payment...`);
       navigate(`/payment?booking_id=${createdBooking.booking_id}`);

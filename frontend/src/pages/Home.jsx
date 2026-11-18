@@ -4,62 +4,23 @@ import {
   Search, MapPin, Calendar, Users, Hotel, ShieldCheck,
   Star, Sparkles, Compass, CheckCircle2, ArrowRight, Tag,
   ChevronLeft, ChevronRight, Heart, Wifi, Coffee, Tv,
-  Clock, ChevronDown, X
+  Clock, ChevronDown, X, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import api from '../services/api';
+import { hotelService, wishlistService } from '../services';
 import InteractiveSearchBar from '../components/InteractiveSearchBar';
 import CategoryTabs from '../components/CategoryTabs';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-
-// Module-level in-memory cache to ensure instant photo and city rendering across SPA navigations
-let memoryCachedHotels = null;
-let memoryCachedCities = null;
-
-// High-quality verified stay fallback photos so hero cards NEVER render blank/white
-const FALLBACK_HERO_PHOTOS = [
-  { id: 1, name: 'Luxury Villa Stay', city: 'Goa', url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80', rating: 4.9 },
-  { id: 2, name: 'Royal Heritage Palace', city: 'Udaipur', url: 'https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=800&q=80', rating: 4.8 },
-  { id: 3, name: 'Serene Mountain Resort', city: 'Manali', url: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=800&q=80', rating: 4.9 },
-  { id: 4, name: 'Beachfront Haven', city: 'Kovalam', url: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80', rating: 4.7 },
-  { id: 5, name: 'Contemporary Urban Suite', city: 'Mumbai', url: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=800&q=80', rating: 4.8 },
-  { id: 6, name: 'Emerald Hilltop Retreat', city: 'Munnar', url: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=800&q=80', rating: 4.9 },
-  { id: 7, name: 'Lakeside Boutique Inn', city: 'Nainital', url: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&w=800&q=80', rating: 4.6 },
-  { id: 8, name: 'Desert Oasis Resort', city: 'Jaisalmer', url: 'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?auto=format&fit=crop&w=800&q=80', rating: 4.8 },
-  { id: 9, name: 'Grand Bay Hotel', city: 'Kochi', url: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=800&q=80', rating: 4.7 }
-];
-
-let cachedHeroPhotos = null;
-try {
-  const saved = localStorage.getItem('bmr_hero_photos_cache');
-  if (saved) {
-    const parsed = JSON.parse(saved);
-    if (Array.isArray(parsed) && parsed.length > 0) cachedHeroPhotos = parsed;
-  }
-} catch (e) {}
 
 const Home = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { user, showToast } = useAuth();
 
-  const [featuredHotels, setFeaturedHotels] = useState(() => {
-    if (memoryCachedHotels && memoryCachedHotels.length > 0) {
-      return memoryCachedHotels;
-    }
-    try {
-      const saved = sessionStorage.getItem('bmr_cached_featured_hotels');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          memoryCachedHotels = parsed;
-          return parsed;
-        }
-      }
-    } catch (e) {}
-    return [];
-  });
-  const [loadingHotels, setLoadingHotels] = useState(() => !memoryCachedHotels || memoryCachedHotels.length === 0);
+  const [featuredHotels, setFeaturedHotels] = useState([]);
+  const [loadingHotels, setLoadingHotels] = useState(true);
+  const [hotelError, setHotelError] = useState(false);
 
   // Wishlist State & Handlers
   const [userWishlist, setUserWishlist] = useState([]);
@@ -74,8 +35,8 @@ const Home = () => {
 
   const fetchWishlist = async () => {
     try {
-      const res = await api.get('/wishlist/');
-      const list = res.data.results || res.data;
+      const data = await wishlistService.getWishlist();
+      const list = data.results || data;
       setUserWishlist(list.map((item) => item.hotel));
     } catch (err) {
       console.error('Failed to load user wishlist:', err);
@@ -91,8 +52,8 @@ const Home = () => {
       return;
     }
     try {
-      const res = await api.post(`/wishlist/toggle/${hotel.id}/`);
-      if (res.data.is_favorited) {
+      const data = await wishlistService.toggleWishlist(hotel.id);
+      if (data.is_favorited) {
         setUserWishlist((prev) => [...prev, hotel.id]);
         showToast(`Saved "${hotel.name}" to your wishlist! ❤️`);
       } else {
@@ -106,22 +67,7 @@ const Home = () => {
 
   // Scroll Ref for Popular Cities horizontal navigation
   const cityScrollRef = useRef(null);
-  const [activeCities, setActiveCities] = useState(() => {
-    if (memoryCachedCities && memoryCachedCities.length > 0) {
-      return memoryCachedCities;
-    }
-    try {
-      const saved = sessionStorage.getItem('bmr_cached_active_cities');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          memoryCachedCities = parsed;
-          return parsed;
-        }
-      }
-    } catch (e) {}
-    return [];
-  });
+  const [activeCities, setActiveCities] = useState([]);
 
   useEffect(() => {
     fetchFeaturedHotels();
@@ -130,40 +76,37 @@ const Home = () => {
 
   const fetchActiveCities = async () => {
     try {
-      const res = await api.get('/hotels/cities/');
-      const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-      if (list && list.length > 0) {
-        memoryCachedCities = list;
-        try {
-          sessionStorage.setItem('bmr_cached_active_cities', JSON.stringify(list));
-        } catch (e) {}
-        setActiveCities(list);
-      }
+      const data = await hotelService.getCities();
+      const list = Array.isArray(data) ? data : (data?.results || []);
+      setActiveCities(list || []);
     } catch (err) {
       console.warn('Failed to load active cities:', err);
+      setActiveCities([]);
     }
   };
 
   const fetchFeaturedHotels = async () => {
-    if (!memoryCachedHotels || memoryCachedHotels.length === 0) {
-      setLoadingHotels(true);
-    }
+    setLoadingHotels(true);
+    setHotelError(false);
     try {
-      const res = await api.get('/hotels/');
-      const rawList = res.data.results || res.data;
+      const data = await hotelService.getHotels();
+      const rawList = data.results || data || [];
       const sorted = [...rawList].sort((a, b) => {
         const ratingA = a.guest_rating !== null && a.guest_rating !== undefined ? parseFloat(a.guest_rating) : (a.star_rating || 0);
         const ratingB = b.guest_rating !== null && b.guest_rating !== undefined ? parseFloat(b.guest_rating) : (b.star_rating || 0);
         if (ratingB !== ratingA) return ratingB - ratingA;
         return (b.reviews_count || 0) - (a.reviews_count || 0);
       });
-      memoryCachedHotels = sorted;
-      try {
-        sessionStorage.setItem('bmr_cached_featured_hotels', JSON.stringify(sorted));
-      } catch (e) {}
       setFeaturedHotels(sorted);
+      setHotelError(false);
     } catch (err) {
       console.error('Failed to load featured hotels:', err);
+      setFeaturedHotels([]);
+      setHotelError(true);
+      try {
+        sessionStorage.removeItem('bmr_cached_featured_hotels');
+        sessionStorage.removeItem('bmr_cached_active_cities');
+      } catch (e) { }
     } finally {
       setLoadingHotels(false);
     }
@@ -319,7 +262,7 @@ const Home = () => {
   // Extract hotel photos from user database hotels for the hero mosaic grid
   const heroHotelPhotos = useMemo(() => {
     if (!featuredHotels || featuredHotels.length === 0) {
-      return cachedHeroPhotos || FALLBACK_HERO_PHOTOS;
+      return [];
     }
     const list = [];
     featuredHotels.forEach((hotel) => {
@@ -348,19 +291,10 @@ const Home = () => {
       }
     });
 
-    if (list.length > 0) {
-      const topSlice = list.slice(0, 15);
-      cachedHeroPhotos = topSlice;
-      try {
-        localStorage.setItem('bmr_hero_photos_cache', JSON.stringify(topSlice));
-      } catch (e) {}
-      return list;
-    }
-
-    return cachedHeroPhotos || FALLBACK_HERO_PHOTOS;
+    return list;
   }, [featuredHotels]);
 
-  const heroPhotos = heroHotelPhotos.length > 0 ? heroHotelPhotos : (cachedHeroPhotos || FALLBACK_HERO_PHOTOS);
+  const heroPhotos = heroHotelPhotos;
   const getPhoto = (index) => (heroPhotos.length > 0 ? heroPhotos[index % heroPhotos.length] : null);
 
   return (
@@ -380,11 +314,6 @@ const Home = () => {
               <p className="text-sm sm:text-base text-slate-600 font-medium max-w-lg leading-relaxed">
                 Discover Handpicked Hotels, Resorts, And Home-Stays That Match Your Mood, Budget, And Location.
               </p>
-
-              {/* Pill Search Bar */}
-              <div className="pt-2">
-                <InteractiveSearchBar selectedCategory={selectedCategory} />
-              </div>
 
               {/* RECENTLY VIEWED HOTELS / RECENT SEARCHES BUTTON & POPUP */}
               <div className="pt-1 flex items-center relative z-40" ref={recentPopoverRef}>
@@ -476,17 +405,10 @@ const Home = () => {
                           <p className="text-xs font-bold text-slate-500">No recent views yet</p>
                           <div className="space-y-1.5 pt-1">
                             <div
-                              onClick={() => { setShowRecentPopover(false); navigate('/search?city=Goa'); }}
+                              onClick={() => { setShowRecentPopover(false); navigate('/search'); }}
                               className="p-2 rounded-xl bg-slate-50 hover:bg-teal-50 border border-slate-200 text-xs font-bold text-slate-700 hover:text-[#207a72] flex items-center justify-between cursor-pointer"
                             >
-                              <span>Explore Stays in Goa</span>
-                              <ArrowRight className="w-3.5 h-3.5 text-[#207a72]" />
-                            </div>
-                            <div
-                              onClick={() => { setShowRecentPopover(false); navigate('/search?city=Mumbai'); }}
-                              className="p-2 rounded-xl bg-slate-50 hover:bg-teal-50 border border-slate-200 text-xs font-bold text-slate-700 hover:text-[#207a72] flex items-center justify-between cursor-pointer"
-                            >
-                              <span>Explore Stays in Mumbai</span>
+                              <span>Explore All Destinations</span>
                               <ArrowRight className="w-3.5 h-3.5 text-[#207a72]" />
                             </div>
                           </div>
@@ -495,6 +417,14 @@ const Home = () => {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Pill Search Bar */}
+              <div className="pt-2 relative z-30">
+                <InteractiveSearchBar
+                  selectedCategory={selectedCategory}
+                  onTabChange={() => setShowRecentPopover(false)}
+                />
               </div>
             </div>
 
@@ -517,7 +447,7 @@ const Home = () => {
                           src={item.photo.url}
                           alt={item.photo.name}
                           loading="eager"
-                          fetchpriority="high"
+                          fetchPriority="high"
                           decoding="async"
                           className="w-full h-full object-cover select-none pointer-events-none transition-opacity duration-300"
                         />
@@ -547,7 +477,7 @@ const Home = () => {
                           src={item.photo.url}
                           alt={item.photo.name}
                           loading="eager"
-                          fetchpriority="high"
+                          fetchPriority="high"
                           decoding="async"
                           className="w-full h-full object-cover select-none pointer-events-none transition-opacity duration-300"
                         />
@@ -577,7 +507,7 @@ const Home = () => {
                           src={item.photo.url}
                           alt={item.photo.name}
                           loading="eager"
-                          fetchpriority="high"
+                          fetchPriority="high"
                           decoding="async"
                           className="w-full h-full object-cover select-none pointer-events-none transition-opacity duration-300"
                         />
@@ -600,70 +530,72 @@ const Home = () => {
       </section>
 
       {/* POPULAR DESTINATIONS SLIDER - 1 SECOND AUTOMATIC STEPPING RECTANGLE CARDS */}
-      <section className="relative z-10 py-12 bg-[#eaf3f9]/80 border-b border-sky-100">
+      {popularCities.length > 0 && (
+        <section className="relative z-10 py-12 bg-[#eaf3f9]/80 border-b border-sky-100">
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 flex items-center gap-2">
-                {t('popular_destinations')}
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
-              </h2>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-900 flex items-center gap-2">
+                  {t('popular_destinations')}
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+                </h2>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* 1-Second Automatic Stepping Card Container */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div
-            ref={cityScrollRef}
-            onMouseEnter={() => setIsPaused(true)}
-            onMouseLeave={() => setIsPaused(false)}
-            className="flex gap-6 overflow-x-auto scroll-smooth py-4 no-scrollbar border-b border-transparent"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-          >
-            {infinitePopularCities.map((city, index) => (
-              <div
-                key={`${city.name}-${index}`}
-                onClick={() => navigate(`/search?city=${encodeURIComponent(city.name)}`)}
-                className="destination-card w-full sm:w-[calc((100%-1.5rem)/2)] md:w-[calc((100%-3rem)/3)] lg:w-[calc((100%-4.5rem)/4)] min-w-full sm:min-w-[calc((100%-1.5rem)/2)] md:min-w-[calc((100%-3rem)/3)] lg:min-w-[calc((100%-4.5rem)/4)] max-w-full sm:max-w-[calc((100%-1.5rem)/2)] md:max-w-[calc((100%-3rem)/3)] lg:max-w-[calc((100%-4.5rem)/4)] group relative h-64 rounded-xl overflow-hidden cursor-pointer shadow-sm border border-slate-200 flex-shrink-0 transition-all duration-300 hover:border-slate-300 hover:shadow-md"
-              >
-                {/* Background Image or Clean Placeholder */}
-                {city.image ? (
-                  <img
-                    src={city.image}
-                    alt={city.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-sky-800 via-slate-800 to-teal-900 flex flex-col items-center justify-center p-4 text-center">
-                    <Hotel className="w-10 h-10 text-white/30 mb-1" />
-                    <span className="text-xs font-bold text-white/60">{city.name}</span>
-                  </div>
-                )}
-
-                {/* Dark Vignette Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent"></div>
-
-                {/* Bottom Place Name Card */}
-                <div className="absolute bottom-3 left-3 right-3">
-                  <div className="bg-black/60 px-3 py-2 rounded-lg flex flex-col gap-0.5 border border-white/20">
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                      <h3 className="text-sm font-bold text-white tracking-tight truncate">
-                        {city.name}
-                      </h3>
+          {/* 1-Second Automatic Stepping Card Container */}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div
+              ref={cityScrollRef}
+              onMouseEnter={() => setIsPaused(true)}
+              onMouseLeave={() => setIsPaused(false)}
+              className="flex gap-6 overflow-x-auto scroll-smooth py-4 no-scrollbar border-b border-transparent"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              {infinitePopularCities.map((city, index) => (
+                <div
+                  key={`${city.name}-${index}`}
+                  onClick={() => navigate(`/search?city=${encodeURIComponent(city.name)}`)}
+                  className="destination-card w-full sm:w-[calc((100%-1.5rem)/2)] md:w-[calc((100%-3rem)/3)] lg:w-[calc((100%-4.5rem)/4)] min-w-full sm:min-w-[calc((100%-1.5rem)/2)] md:min-w-[calc((100%-3rem)/3)] lg:min-w-[calc((100%-4.5rem)/4)] max-w-full sm:max-w-[calc((100%-1.5rem)/2)] md:max-w-[calc((100%-3rem)/3)] lg:max-w-[calc((100%-4.5rem)/4)] group relative h-64 rounded-xl overflow-hidden cursor-pointer shadow-sm border border-slate-200 flex-shrink-0 transition-all duration-300 hover:border-slate-300 hover:shadow-md"
+                >
+                  {/* Background Image or Clean Placeholder */}
+                  {city.image ? (
+                    <img
+                      src={city.image}
+                      alt={city.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-sky-800 via-slate-800 to-teal-900 flex flex-col items-center justify-center p-4 text-center">
+                      <Hotel className="w-10 h-10 text-white/30 mb-1" />
+                      <span className="text-xs font-bold text-white/60">{city.name}</span>
                     </div>
-                    <p className="text-[11px] font-medium text-slate-300 pl-5">
-                      {city.count}
-                    </p>
+                  )}
+
+                  {/* Dark Vignette Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent"></div>
+
+                  {/* Bottom Place Name Card */}
+                  <div className="absolute bottom-3 left-3 right-3">
+                    <div className="bg-black/60 px-3 py-2 rounded-lg flex flex-col gap-0.5 border border-white/20">
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <h3 className="text-sm font-bold text-white tracking-tight truncate">
+                          {city.name}
+                        </h3>
+                      </div>
+                      <p className="text-[11px] font-medium text-slate-300 pl-5">
+                        {city.count}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* FEATURED HOTELS & VILLAS SECTION - SEPARATED BY CITY ROWS */}
       <section className="py-14 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
@@ -727,6 +659,41 @@ const Home = () => {
                 <div className="h-3 bg-slate-200 rounded w-1/2"></div>
               </div>
             ))}
+          </div>
+        ) : hotelError ? (
+          <div className="card-white p-12 text-center space-y-4 max-w-lg mx-auto border border-rose-200 shadow-sm">
+            <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
+            <h3 className="text-lg font-black text-slate-900">Unable to Connect to Server</h3>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              We could not load featured stays from the backend database. Please ensure the backend server is running and try again.
+            </p>
+            <button
+              onClick={() => {
+                fetchFeaturedHotels();
+                fetchActiveCities();
+              }}
+              className="btn-rose py-2.5 px-6 text-xs font-extrabold inline-flex items-center gap-2 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Retry Connection
+            </button>
+          </div>
+        ) : categoryFilteredHotels.length === 0 ? (
+          <div className="card-white p-12 text-center space-y-3 max-w-md mx-auto">
+            <Hotel className="w-12 h-12 text-slate-300 mx-auto" />
+            <h3 className="text-base font-black text-slate-900">
+              No {selectedCategory === 'VILLAS' ? 'Villas or Homestays' : 'Hotels'} Available
+            </h3>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              No verified properties in this category are currently listed in the database.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => navigate('/search')}
+                className="btn-rose py-2 px-5 text-xs font-bold"
+              >
+                Search All Stays
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-12">
@@ -816,7 +783,7 @@ const Home = () => {
               </div>
             ) : (
               /* SEPARATE LINE ROWS FOR EACH CITY WHEN 'ALL' IS SELECTED */
-              (activeCitiesList.length > 0 ? activeCitiesList : ['Ahmedabad', 'Goa', 'Udaipur', 'Mumbai', 'Jaipur']).map((cityName) => {
+              activeCitiesList.map((cityName) => {
                 const cityHotels = groupedHotelsByCity[cityName] || [];
                 if (cityHotels.length === 0) return null;
 

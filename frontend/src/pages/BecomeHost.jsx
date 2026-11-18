@@ -6,6 +6,8 @@ import {
   Zap, Award, Check, RefreshCw, ChevronDown, AlertCircle, Search
 } from 'lucide-react';
 import api from '../services/api';
+import { authService, ownerHotelService } from '../services';
+import { ENDPOINTS } from '../config/apiEndpoints';
 import { useAuth } from '../context/AuthContext';
 
 export const COUNTRY_PHONE_CONFIGS = [
@@ -265,8 +267,8 @@ const BecomeHost = () => {
     setCheckingEmail(true);
 
     try {
-      const res = await api.get(`/users/check-email/?email=${encodeURIComponent(formData.email.trim())}`);
-      if (res.data.exists) {
+      const emailRes = await authService.checkEmail(formData.email.trim());
+      if (emailRes.exists) {
         const msg = 'An account with this email address already exists. Please login or use another email.';
         setEmailError(msg);
         showToast(msg, 'error');
@@ -274,8 +276,8 @@ const BecomeHost = () => {
         return; // DO NOT PROCEED TO STEP 2
       }
 
-      const phoneRes = await api.get(`/users/check-phone/?phone=${encodeURIComponent(formData.phone_number.trim())}`);
-      if (phoneRes.data.exists) {
+      const phoneRes = await authService.checkPhone(formData.phone_number.trim());
+      if (phoneRes.exists) {
         const msg = 'An account with this mobile number already exists. Please use another number.';
         setPhoneError(msg);
         showToast(msg, 'error');
@@ -338,7 +340,7 @@ const BecomeHost = () => {
       }
 
       // 2. Create order on backend with key_id & secret configured in .env
-      const orderRes = await api.post('/payments/create-host-subscription-order/', {
+      const orderRes = await api.post(ENDPOINTS.PAYMENTS.CREATE_HOST_SUBSCRIPTION_ORDER, {
         plan_id: targetPlan.id,
         amount: targetPlan.price
       });
@@ -389,7 +391,7 @@ const BecomeHost = () => {
           // Verify Payment Signature on server-side
           try {
             setPaymentProcessing(true);
-            const verifyRes = await api.post('/payments/verify-host-subscription/', {
+            const verifyRes = await api.post(ENDPOINTS.PAYMENTS.VERIFY_HOST_SUBSCRIPTION, {
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
@@ -510,7 +512,7 @@ const BecomeHost = () => {
       // 2. Automatically Create First Hotel Property for New Host (Pending Super Admin Approval)
       if (formData.hotel_name) {
         try {
-          await api.post('/hotels/', {
+          await ownerHotelService.createHotel({
             name: formData.hotel_name,
             property_type: formData.property_type || 'HOTEL',
             city: formData.city || 'Udaipur',
@@ -877,21 +879,15 @@ const BecomeHost = () => {
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
                     Destination City <span className="text-rose-600">*</span>
                   </label>
-                  <select
+                  <input
+                    type="text"
+                    required
                     name="city"
                     value={formData.city}
                     onChange={handleInputChange}
+                    placeholder="Enter city (e.g. Udaipur, Mumbai, Goa)..."
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 focus:bg-white"
-                  >
-                    <option value="Udaipur">Udaipur, Rajasthan</option>
-                    <option value="Goa">Goa</option>
-                    <option value="Ahmedabad">Ahmedabad, Gujarat</option>
-                    <option value="Mumbai">Mumbai, Maharashtra</option>
-                    <option value="Jaipur">Jaipur, Rajasthan</option>
-                    <option value="Delhi NCR">Delhi NCR</option>
-                    <option value="Bengaluru">Bengaluru, Karnataka</option>
-                    <option value="Varanasi">Varanasi, UP</option>
-                  </select>
+                  />
                 </div>
               </div>
 

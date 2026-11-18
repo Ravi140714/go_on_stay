@@ -9,6 +9,16 @@ import {
   UserX, Download
 } from 'lucide-react';
 import api from '../../services/api';
+import {
+  ownerDashboardService,
+  ownerHotelService,
+  ownerRoomService,
+  ownerBookingService,
+  ownerEarningService,
+  ownerPayoutService,
+  notificationService,
+  profileService
+} from '../../services';
 import { useAuth } from '../../context/AuthContext';
 import { formatDisplayDate } from '../../utils/dateUtils';
 import Sidebar from '../../components/Sidebar';
@@ -95,6 +105,19 @@ const OwnerDashboard = () => {
   // Modals for Hotel Guest Bookings & Comprehensive Reservation Info
   const [selectedHotelForBookings, setSelectedHotelForBookings] = useState(null);
   const [hotelBookingSearch, setHotelBookingSearch] = useState('');
+
+  const handleViewHotelBookings = async (hotel) => {
+    setSelectedHotelForBookings(hotel);
+    try {
+      const res = await ownerBookingService.getOwnerBookings();
+      const list = res?.results || res || [];
+      if (Array.isArray(list)) {
+        setBookings(list);
+      }
+    } catch (err) {
+      console.error('Failed to fetch latest bookings for hotel:', err);
+    }
+  };
   const [selectedBookingForDetails, setSelectedBookingForDetails] = useState(null);
   const [rejectingBooking, setRejectingBooking] = useState(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState('');
@@ -183,19 +206,19 @@ const OwnerDashboard = () => {
     setLoading(true);
     try {
       const [hotelsRes, bookingsRes, settlementsRes, payoutRes, reviewsRes] = await Promise.allSettled([
-        api.get('/hotels/owner-hotels/'),
-        api.get('/bookings/?page_size=1000'),
-        api.get('/payments/settlements/'),
-        api.get('/payments/payout-account/'),
-        api.get('/reviews/?owner=true')
+        ownerDashboardService.getOwnerHotels(),
+        ownerBookingService.getOwnerBookings(),
+        ownerEarningService.getSettlements(),
+        ownerPayoutService.getPayoutAccount(),
+        ownerDashboardService.getOwnerReviews()
       ]);
       if (hotelsRes.status === 'fulfilled') {
-        const rawHotels = hotelsRes.value.data.results || hotelsRes.value.data || [];
+        const rawHotels = hotelsRes.value?.results || hotelsRes.value || [];
         const hotelsWithRooms = await Promise.all(rawHotels.map(async (h) => {
           if (Array.isArray(h.rooms) && h.rooms.length > 0) return h;
           try {
-            const rRes = await api.get(`/rooms/by-hotel/${h.id}/`);
-            const rList = rRes.data.results || rRes.data || [];
+            const rData = await ownerRoomService.getRoomsByHotel(h.id);
+            const rList = rData?.results || rData || [];
             return { ...h, rooms: rList };
           } catch (e) {
             return h;
@@ -203,11 +226,11 @@ const OwnerDashboard = () => {
         }));
         setHotels(hotelsWithRooms);
       }
-      if (bookingsRes.status === 'fulfilled') setBookings(bookingsRes.value.data.results || bookingsRes.value.data);
-      if (settlementsRes.status === 'fulfilled') setSettlementData(settlementsRes.value.data || { summary: {}, results: [] });
-      if (reviewsRes.status === 'fulfilled') setReviews(reviewsRes.value.data.results || reviewsRes.value.data || []);
+      if (bookingsRes.status === 'fulfilled') setBookings(bookingsRes.value?.results || bookingsRes.value);
+      if (settlementsRes.status === 'fulfilled') setSettlementData(settlementsRes.value || { summary: {}, results: [] });
+      if (reviewsRes.status === 'fulfilled') setReviews(reviewsRes.value?.results || reviewsRes.value || []);
       if (payoutRes.status === 'fulfilled') {
-        const acc = payoutRes.value.data?.account || payoutRes.value.data;
+        const acc = payoutRes.value?.account || payoutRes.value;
         if (acc && (acc.masked_account_number || acc.masked_upi_id || acc.account_holder_name)) {
           setPayoutAccount(acc);
           setPayoutForm((prev) => ({
@@ -232,8 +255,8 @@ const OwnerDashboard = () => {
   const fetchOwnerNotifications = async () => {
     try {
       setLoadingNotifications(true);
-      const res = await api.get('/notifications/');
-      const list = res.data.results || res.data || [];
+      const data = await notificationService.getNotifications();
+      const list = data.results || data || [];
       setOwnerNotifications(list);
       setUnreadNotificationsCount(list.filter(n => !n.is_read).length);
     } catch (err) {
@@ -246,7 +269,7 @@ const OwnerDashboard = () => {
   const handleMarkNotificationRead = async (notifId, e) => {
     if (e) e.stopPropagation();
     try {
-      await api.post(`/notifications/${notifId}/read/`);
+      await notificationService.markAsRead(notifId);
       setOwnerNotifications(prev => prev.map(n => n.id === notifId ? { ...n, is_read: true } : n));
       setUnreadNotificationsCount(prev => Math.max(0, prev - 1));
     } catch (err) {
@@ -256,7 +279,7 @@ const OwnerDashboard = () => {
 
   const handleMarkAllNotificationsRead = async () => {
     try {
-      await api.post('/notifications/read-all/');
+      await notificationService.markAllAsRead();
       setOwnerNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadNotificationsCount(0);
       showToast('All notifications marked as read', 'success');
@@ -302,38 +325,6 @@ const OwnerDashboard = () => {
     return 'XXXXXX' + clean.slice(-4);
   };
 
-  const saveOwnerApproval = (bookingId, status, reason = '') => {
-    try {
-      if (!bookingId) return;
-      const existing = JSON.parse(localStorage.getItem('bmr_owner_cancellation_approvals') || '{}');
-      const rec = {
-        status,
-        reason,
-        updated_at: new Date().toISOString()
-      };
-      const raw = String(bookingId);
-      const clean = raw.replace('#', '');
-      existing[raw] = rec;
-      existing[clean] = rec;
-      existing[`#${clean}`] = rec;
-      localStorage.setItem('bmr_owner_cancellation_approvals', JSON.stringify(existing));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const getOwnerApproval = (bookingId) => {
-    try {
-      if (!bookingId) return null;
-      const existing = JSON.parse(localStorage.getItem('bmr_owner_cancellation_approvals') || '{}');
-      const raw = String(bookingId);
-      const clean = raw.replace('#', '');
-      return existing[raw] || existing[clean] || existing[`#${clean}`] || null;
-    } catch (e) {
-      return null;
-    }
-  };
-
   const isCancellationBooking = (b) => {
     if (!b) return false;
     const bStatus = (b.booking_status || b.status || '').toUpperCase();
@@ -356,16 +347,12 @@ const OwnerDashboard = () => {
 
   const checkOwnerApprovalStatus = (b) => {
     if (!b) return 'PENDING';
-    const approval = getOwnerApproval(b.id);
-    if (approval?.status === 'APPROVED') return 'APPROVED';
-    if (approval?.status === 'REJECTED') return 'REJECTED';
-
     const bStatus = (b.booking_status || b.status || '').toUpperCase();
     const cStatus = (b.cancellation_status || '').toUpperCase();
-    const oStatus = (b.owner_approval_status || '').toUpperCase();
+    const oStatus = (b.owner_approval_status || b.cancellation_breakdown?.owner_approval?.status || '').toUpperCase();
 
-    if (oStatus === 'APPROVED' || bStatus === 'OWNER_APPROVED' || cStatus === 'OWNER_APPROVED' || b.cancellation_breakdown?.owner_approval?.status === 'APPROVED') return 'APPROVED';
-    if (oStatus === 'REJECTED' || bStatus === 'OWNER_REJECTED' || cStatus === 'OWNER_REJECTED' || b.cancellation_breakdown?.owner_approval?.status === 'REJECTED') return 'REJECTED';
+    if (oStatus === 'APPROVED' || oStatus === 'APPROVE' || bStatus === 'OWNER_APPROVED' || cStatus === 'OWNER_APPROVED') return 'APPROVED';
+    if (oStatus === 'REJECTED' || oStatus === 'REJECT' || bStatus === 'OWNER_REJECTED' || cStatus === 'OWNER_REJECTED') return 'REJECTED';
     return 'PENDING';
   };
 
@@ -373,40 +360,79 @@ const OwnerDashboard = () => {
   const [downloadingStatement, setDownloadingStatement] = useState(false);
 
   const handleMarkNoShow = async (booking) => {
+    if (markingNoShowId) return; // Prevent duplicate requests
     const bId = booking.booking_id || booking.id;
-    if (!window.confirm(`⚠️ Confirm Guest No-Show for Booking #${bId}?\n\nGuest: ${booking.guest_name || booking.customer_name || 'Guest'}\nCheck-in Date: ${formatDisplayDate(booking.check_in)}\n\nMarking this booking as NO_SHOW indicates the guest failed to arrive for their reservation and releases the room.`)) {
+    const cleanId = String(bId).replace(/^#/, '');
+
+    if (!window.confirm(`⚠️ Confirm Guest No-Show for Booking #${cleanId}?\n\nGuest: ${booking.guest_name || booking.customer_name || 'Guest'}\nCheck-in Date: ${formatDisplayDate(booking.check_in)}\n\nMarking this booking as NO_SHOW indicates the guest failed to arrive for their reservation and releases the room.`)) {
       return;
     }
 
     setMarkingNoShowId(booking.id);
     try {
-      const res = await api.post(`/bookings/${booking.id}/no-show/`);
-      showToast(res.data?.message || `Booking #${bId} marked as No-Show.`, 'success');
-      setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, booking_status: 'NO_SHOW', status: 'NO_SHOW' } : b));
-      if (selectedBookingForDetails && selectedBookingForDetails.id === booking.id) {
-        setSelectedBookingForDetails(prev => ({ ...prev, booking_status: 'NO_SHOW', status: 'NO_SHOW' }));
+      const data = await ownerBookingService.markNoShow(cleanId);
+      const newStatus = data?.status || 'NO_SHOW';
+      showToast(data?.message || `Booking #${cleanId} marked as No-Show.`, 'success');
+      setBookings(prev => prev.map(b => (b.id === booking.id || b.booking_id === booking.booking_id) ? { ...b, booking_status: newStatus, status: newStatus } : b));
+      if (selectedBookingForDetails && (selectedBookingForDetails.id === booking.id || selectedBookingForDetails.booking_id === booking.booking_id)) {
+        setSelectedBookingForDetails(prev => ({ ...prev, booking_status: newStatus, status: newStatus }));
       }
+      await fetchOwnerData();
     } catch (err) {
       console.error('Failed to mark booking as no-show:', err);
       const msg = err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to mark as No-Show.';
       showToast(msg, 'error');
     } finally {
       setMarkingNoShowId(null);
-      await fetchOwnerData();
     }
   };
 
-  const handleDownloadStatementPdf = async () => {
+  const handleDownloadStatementPdf = async (settlementId) => {
+    if (downloadingStatement) return; // Prevent duplicate downloads
     setDownloadingStatement(true);
     try {
-      const res = await api.get('/payments/settlement-statement/?download=pdf', {
-        responseType: 'blob',
-      });
+      const res = await ownerEarningService.downloadStatementPdf(
+        settlementId ? { settlement_id: settlementId } : {}
+      );
+
+      const contentType = res.headers?.['content-type'] || res.data?.type || '';
+
+      // Check if backend actually returned a real PDF binary
+      if (!contentType.includes('application/pdf')) {
+        let errorMsg = 'Backend PDF export is pending implementation by the backend developer.';
+        try {
+          const text = await res.data.text();
+          const json = JSON.parse(text);
+          if (json.error || json.detail || json.message) {
+            errorMsg = json.error || json.detail || json.message;
+          }
+        } catch (e) {
+          // not JSON text
+        }
+        showToast(errorMsg, 'error');
+        return;
+      }
+
+      if (!res.data || res.data.size === 0) {
+        showToast('Empty statement received from backend.', 'error');
+        return;
+      }
+
+      // Read filename from Content-Disposition header if provided by backend
+      let filename = `GoOnStay_Settlement_Statement_${new Date().toISOString().split('T')[0]}.pdf`;
+      const disposition = res.headers?.['content-disposition'] || '';
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (match && match[1]) {
+          filename = match[1].replace(/['"]/g, '').trim();
+        }
+      }
+
       const blob = new Blob([res.data], { type: 'application/pdf' });
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `GoOnStay_Settlement_Statement_${new Date().toISOString().split('T')[0]}.pdf`;
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -414,7 +440,17 @@ const OwnerDashboard = () => {
       showToast('Settlement statement PDF downloaded successfully!', 'success');
     } catch (err) {
       console.error('Failed to download settlement statement PDF:', err);
-      showToast('Failed to download settlement statement PDF.', 'error');
+      let errorMsg = 'Failed to download settlement statement PDF from backend.';
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          errorMsg = json.error || json.detail || json.message || errorMsg;
+        } catch (e) {}
+      } else if (err.response?.data?.error || err.response?.data?.detail) {
+        errorMsg = err.response.data.error || err.response.data.detail;
+      }
+      showToast(errorMsg, 'error');
     } finally {
       setDownloadingStatement(false);
     }
@@ -441,8 +477,6 @@ const OwnerDashboard = () => {
         });
       }
 
-      saveOwnerApproval(booking.id, 'APPROVED');
-      if (booking.booking_id) saveOwnerApproval(booking.booking_id, 'APPROVED');
       showToast(`✅ Cancellation for Booking #${booking.booking_id || booking.id} approved! Forwarded to Super Admin for refund disbursal.`, 'success');
       
       setBookings(prev => prev.map(b => b.id === booking.id ? {
@@ -463,16 +497,8 @@ const OwnerDashboard = () => {
         }));
       }
     } catch (err) {
-      saveOwnerApproval(booking.id, 'APPROVED');
-      if (booking.booking_id) saveOwnerApproval(booking.booking_id, 'APPROVED');
-      setBookings(prev => prev.map(b => b.id === booking.id ? {
-        ...b,
-        booking_status: 'OWNER_APPROVED',
-        cancellation_status: 'OWNER_APPROVED',
-        owner_approval_status: 'APPROVED',
-        payment_status: 'REFUND_PENDING'
-      } : b));
-      showToast(`✅ Cancellation for Booking #${booking.booking_id || booking.id} approved! Forwarded to Super Admin for refund disbursal.`, 'success');
+      const errMsg = err.response?.data?.error || err.message || 'Failed to approve cancellation.';
+      showToast(`❌ Cancellation approval failed: ${errMsg}`, 'error');
     } finally {
       await fetchOwnerData();
       setApprovingBookingId(null);
@@ -502,7 +528,6 @@ const OwnerDashboard = () => {
         });
       }
 
-      saveOwnerApproval(rejectingBooking.id, 'REJECTED', rejectionReasonInput.trim());
       showToast(`Cancellation for Booking #${rejectingBooking.booking_id || rejectingBooking.id} has been rejected.`, 'info');
       
       setBookings(prev => prev.map(b => b.id === rejectingBooking.id ? {
@@ -526,15 +551,8 @@ const OwnerDashboard = () => {
       setRejectingBooking(null);
       setRejectionReasonInput('');
     } catch (err) {
-      saveOwnerApproval(rejectingBooking.id, 'REJECTED', rejectionReasonInput.trim());
-      setBookings(prev => prev.map(b => b.id === rejectingBooking.id ? {
-        ...b,
-        booking_status: 'OWNER_REJECTED',
-        cancellation_status: 'OWNER_REJECTED',
-        owner_approval_status: 'REJECTED',
-        rejection_reason: rejectionReasonInput.trim()
-      } : b));
-      showToast(`Cancellation for Booking #${rejectingBooking.booking_id || rejectingBooking.id} has been rejected.`, 'info');
+      const errMsg = err.response?.data?.error || err.message || 'Failed to reject cancellation.';
+      showToast(`❌ Cancellation rejection failed: ${errMsg}`, 'error');
       setRejectingBooking(null);
     } finally {
       await fetchOwnerData();
@@ -654,13 +672,22 @@ const OwnerDashboard = () => {
 
   const totalRooms = hotels.reduce((acc, h) => acc + (h.rooms?.length || 0), 0);
 
+  const getOwnerApproval = (bookingOrId) => {
+    if (!bookingOrId) return null;
+    if (typeof bookingOrId === 'object') {
+      const oStatus = bookingOrId.owner_approval_status || bookingOrId.cancellation_breakdown?.owner_approval?.status;
+      if (oStatus) return { status: String(oStatus).toUpperCase() };
+    }
+    return null;
+  };
+
   const isCancelledOrRefundedBooking = (b) => {
     if (!b) return false;
     const bStatus = (b.booking_status || b.status || '').toUpperCase();
     const pStatus = (b.payment_status || '').toUpperCase();
     const cStatus = (b.cancellation_status || '').toUpperCase();
     const rStatus = (b.refund_status || '').toUpperCase();
-    const approval = getOwnerApproval(b.id);
+    const approval = checkOwnerApprovalStatus(b);
     return (
       bStatus === 'CANCELLED' ||
       bStatus === 'CANCELLATION_REQUESTED' ||
@@ -673,7 +700,7 @@ const OwnerDashboard = () => {
       pStatus === 'REFUND_PROCESSING' ||
       rStatus === 'REFUNDED' ||
       rStatus === 'REFUND_PENDING' ||
-      approval?.status === 'APPROVED' ||
+      approval === 'APPROVED' ||
       isCancellationBooking(b)
     );
   };
@@ -692,8 +719,12 @@ const OwnerDashboard = () => {
   });
   const confirmedBookings = activeConfirmedBookings;
 
-  const grossRevenue = activeConfirmedBookings.reduce((acc, b) => acc + parseFloat(b.total_amount || 0), 0);
-  const platformFee = grossRevenue * 0.10; // 10% platform commission
+  const grossRevenue = settlementData.summary?.total_gross !== undefined && settlementData.summary?.total_gross !== null
+    ? parseFloat(settlementData.summary.total_gross)
+    : activeConfirmedBookings.reduce((acc, b) => acc + parseFloat(b.total_amount || 0), 0);
+  const platformFee = settlementData.summary?.total_platform_commission !== undefined && settlementData.summary?.total_platform_commission !== null
+    ? parseFloat(settlementData.summary.total_platform_commission)
+    : grossRevenue * 0.10; // 10% platform commission
 
   const payableBookings = activeConfirmedBookings.filter(
     (b) => !nonPayableSettlementBookingIds.has(String(b.id)) && !nonPayableSettlementBookingIds.has(String(b.booking_id))
@@ -710,10 +741,10 @@ const OwnerDashboard = () => {
     : Math.max(0, payableGrossRevenue - payablePlatformFee);
 
   const filteredBookings = bookings.filter((b) => {
-    if (b.booking_status === 'PENDING_PAYMENT' && b.payment_status === 'PENDING') return false;
-
     if (selectedHotelFilter !== 'ALL') {
-      const matchHotel = b.hotel?.toString() === selectedHotelFilter.toString() || b.hotel_details?.id?.toString() === selectedHotelFilter.toString();
+      const matchHotel = b.hotel?.toString() === selectedHotelFilter.toString() ||
+                         b.hotel_details?.id?.toString() === selectedHotelFilter.toString() ||
+                         b.hotel_id?.toString() === selectedHotelFilter.toString();
       if (!matchHotel) return false;
     }
     if (reservationTabFilter === 'CANCELLATIONS') {
@@ -723,6 +754,10 @@ const OwnerDashboard = () => {
       const bStatus = (b.booking_status || b.status || '').toUpperCase();
       return (bStatus === 'CONFIRMED' || bStatus === 'CHECKED_IN' || bStatus === 'CHECKED_OUT') && !isCancellationBooking(b);
     }
+    if (reservationTabFilter === 'PENDING') {
+      const bStatus = (b.booking_status || b.status || '').toUpperCase();
+      return bStatus === 'PENDING_PAYMENT' && !isCancellationBooking(b);
+    }
     return true;
   });
 
@@ -730,42 +765,140 @@ const OwnerDashboard = () => {
   const [analyticsTimeframe, setAnalyticsTimeframe] = useState('6M');
   const [hoveredBarIndex, setHoveredBarIndex] = useState(null);
 
-  // Generate monthly data dynamically for charts
-  const monthlyAnalyticsData = React.useMemo(() => {
-    const months = [];
+  // Generate chart data dynamically: Daily for 30D, Monthly for 6M / 1Y
+  const chartAnalyticsData = React.useMemo(() => {
     const now = new Date();
-    const count = analyticsTimeframe === '30D' ? 4 : analyticsTimeframe === '1Y' ? 12 : 6;
-    for (let i = count - 1; i >= 0; i--) {
+
+    if (analyticsTimeframe === '30D') {
+      const days = [];
+      // Generate last 30 days up to today
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const y = d.getFullYear();
+        const m = d.getMonth();
+        const dt = d.getDate();
+        const monthShort = d.toLocaleString('en-US', { month: 'short' });
+        const isToday = i === 0;
+
+        const dayBookings = bookings.filter((b) => {
+          if (isCancelledOrRefundedBooking(b)) return false;
+          if (!b.created_at) return false;
+          const bDate = new Date(b.created_at);
+          return (
+            bDate.getFullYear() === y &&
+            bDate.getMonth() === m &&
+            bDate.getDate() === dt
+          );
+        });
+
+        const confirmedInDay = dayBookings.filter(b => {
+          const bStatus = (b.booking_status || b.status || '').toUpperCase();
+          return ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'COMPLETED'].includes(bStatus);
+        });
+
+        const rev = confirmedInDay.reduce((acc, b) => acc + parseFloat(b.total_amount || 0), 0);
+
+        // Show date label on every 5th day, on today, or if day has revenue
+        const showLabel = i % 5 === 0 || isToday || rev > 0;
+
+        days.push({
+          label: isToday ? 'Today' : `${dt} ${monthShort}`,
+          shortLabel: `${dt}`,
+          fullLabel: `${dt} ${monthShort} ${y}${isToday ? ' (Today)' : ''}`,
+          revenue: rev,
+          bookingsCount: dayBookings.length,
+          confirmedCount: confirmedInDay.length,
+          showLabel,
+          isToday,
+        });
+      }
+
+      const maxRev = Math.max(...days.map(d => d.revenue), 0);
+      return days.map(d => ({
+        ...d,
+        heightPercent: maxRev > 0 && d.revenue > 0 ? Math.max(16, Math.round((d.revenue / maxRev) * 100)) : 0
+      }));
+    }
+
+    if (analyticsTimeframe === '1Y') {
+      // Year 2026: 12 calendar months
+      const months = [];
+      const currentYear = now.getFullYear();
+      for (let m = 0; m < 12; m++) {
+        const d = new Date(currentYear, m, 1);
+        const monthKey = d.toLocaleString('en-US', { month: 'short' });
+
+        const monthBookings = bookings.filter((b) => {
+          if (isCancelledOrRefundedBooking(b)) return false;
+          if (!b.created_at) return false;
+          const bDate = new Date(b.created_at);
+          return bDate.getMonth() === m && bDate.getFullYear() === currentYear;
+        });
+
+        const confirmedInMonth = monthBookings.filter((b) => {
+          const bStatus = (b.booking_status || b.status || '').toUpperCase();
+          return ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'COMPLETED'].includes(bStatus);
+        });
+
+        const rev = confirmedInMonth.reduce((acc, b) => acc + parseFloat(b.total_amount || 0), 0);
+
+        months.push({
+          label: monthKey,
+          shortLabel: monthKey,
+          fullLabel: `${d.toLocaleString('en-US', { month: 'long' })} ${currentYear}`,
+          revenue: rev,
+          bookingsCount: monthBookings.length,
+          confirmedCount: confirmedInMonth.length,
+          showLabel: true,
+          isToday: m === now.getMonth(),
+        });
+      }
+
+      const maxRev = Math.max(...months.map(m => m.revenue), 0);
+      return months.map(m => ({
+        ...m,
+        heightPercent: maxRev > 0 && m.revenue > 0 ? Math.max(16, Math.round((m.revenue / maxRev) * 100)) : 0
+      }));
+    }
+
+    // Default: '6M' (Last 6 Months)
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthKey = d.toLocaleString('en-US', { month: 'short' });
       const year = d.getFullYear();
       const monthIndex = d.getMonth();
 
       const monthBookings = bookings.filter((b) => {
+        if (isCancelledOrRefundedBooking(b)) return false;
         if (!b.created_at) return false;
         const bDate = new Date(b.created_at);
         return bDate.getMonth() === monthIndex && bDate.getFullYear() === year;
       });
 
-      const confirmedInMonth = monthBookings.filter(b =>
-        ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'COMPLETED'].includes(b.booking_status)
-      );
+      const confirmedInMonth = monthBookings.filter((b) => {
+        const bStatus = (b.booking_status || b.status || '').toUpperCase();
+        return ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'COMPLETED'].includes(bStatus);
+      });
 
       const rev = confirmedInMonth.reduce((acc, b) => acc + parseFloat(b.total_amount || 0), 0);
 
       months.push({
-        label: `${monthKey}`,
-        fullLabel: `${monthKey} ${year}`,
+        label: monthKey,
+        shortLabel: monthKey,
+        fullLabel: `${d.toLocaleString('en-US', { month: 'long' })} ${year}`,
         revenue: rev,
         bookingsCount: monthBookings.length,
         confirmedCount: confirmedInMonth.length,
+        showLabel: true,
+        isToday: i === 0,
       });
     }
 
-    const maxRev = Math.max(...months.map(m => m.revenue), 1000);
+    const maxRev = Math.max(...months.map(m => m.revenue), 0);
     return months.map(m => ({
       ...m,
-      heightPercent: Math.max(12, Math.round((m.revenue / (maxRev || 1)) * 100))
+      heightPercent: maxRev > 0 && m.revenue > 0 ? Math.max(16, Math.round((m.revenue / maxRev) * 100)) : 0
     }));
   }, [bookings, analyticsTimeframe]);
 
@@ -800,7 +933,9 @@ const OwnerDashboard = () => {
       const confirmed = hBookings.filter(b => ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'COMPLETED'].includes(b.booking_status));
       const rev = confirmed.reduce((acc, b) => acc + parseFloat(b.total_amount || 0), 0);
       const totalR = h.rooms?.length || 1;
-      const occRate = Math.min(100, Math.round(((confirmed.length * 2) / Math.max(1, totalR * 10)) * 100)) || 50;
+      const occRate = (confirmed.length > 0 && totalR > 0)
+        ? Math.min(100, Math.round(((confirmed.length * 2) / Math.max(1, totalR * 10)) * 100))
+        : 0;
 
       return {
         id: h.id,
@@ -958,7 +1093,10 @@ const OwnerDashboard = () => {
             </div>
             <div>
               <p className="text-xs font-extrabold uppercase tracking-wider text-[#64748B]">Total Booked Reservations</p>
-              <h3 className="text-2xl font-black text-[#0284C7]">{confirmedBookings.length} Booked Rooms</h3>
+              <h3 className="text-2xl font-black text-[#0284C7]">{bookings.length} {bookings.length === 1 ? 'Booked Room' : 'Booked Rooms'}</h3>
+              {confirmedBookings.length !== bookings.length && (
+                <p className="text-[10px] text-slate-500 font-bold mt-0.5">{confirmedBookings.length} Confirmed</p>
+              )}
             </div>
           </div>
 
@@ -1071,7 +1209,7 @@ const OwnerDashboard = () => {
 
                       <button
                         type="button"
-                        onClick={() => setSelectedHotelForBookings(hotel)}
+                        onClick={() => handleViewHotelBookings(hotel)}
                         className="py-2.5 px-2 rounded-xl bg-[#eaf3f9] hover:bg-sky-600 text-sky-600 hover:text-white border border-sky-200 hover:border-sky-600 text-[11px] font-extrabold transition-all inline-flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap leading-none shadow-2xs"
                         title="View Guest Bookings"
                       >
@@ -1116,11 +1254,14 @@ const OwnerDashboard = () => {
         {/* Tab Content: Host Settlement & Escrow Ledger */}
         {activeTab === 'SETTLEMENTS' && (() => {
           const rawItems = settlementData.results || [];
+          const isCancelledItem = (item) => item.status === 'REVERSED' || item.booking_status === 'CANCELLED' || item.status === 'CANCELLED';
+
           const filteredItems = rawItems.filter((item) => {
-            if (settlementFilter === 'ON_HOLD' && item.status !== 'ON_HOLD') return false;
-            if (settlementFilter === 'ELIGIBLE' && item.status !== 'ELIGIBLE') return false;
+            if (settlementFilter === 'ON_HOLD' && (item.status !== 'ON_HOLD' || isCancelledItem(item))) return false;
+            if (settlementFilter === 'ELIGIBLE' && (item.status !== 'ELIGIBLE' || isCancelledItem(item))) return false;
             if (settlementFilter === 'PAID' && item.status !== 'PAID') return false;
             if (settlementFilter === 'DISPUTED' && !item.is_disputed && item.status !== 'DISPUTED') return false;
+            if (settlementFilter === 'CANCELLED' && !isCancelledItem(item)) return false;
 
             if (settlementSearch.trim()) {
               const q = settlementSearch.toLowerCase().trim();
@@ -1134,10 +1275,17 @@ const OwnerDashboard = () => {
             return true;
           });
 
-          const onHoldCount = rawItems.filter(i => i.status === 'ON_HOLD').length;
-          const eligibleCount = rawItems.filter(i => i.status === 'ELIGIBLE').length;
-          const disputedCount = rawItems.filter(i => i.is_disputed || i.status === 'DISPUTED').length;
+          const onHoldCount = settlementData.summary?.on_hold_count !== undefined
+            ? settlementData.summary.on_hold_count
+            : rawItems.filter(i => i.status === 'ON_HOLD' && !isCancelledItem(i)).length;
+          const eligibleCount = settlementData.summary?.eligible_count !== undefined
+            ? settlementData.summary.eligible_count
+            : rawItems.filter(i => i.status === 'ELIGIBLE' && !isCancelledItem(i)).length;
+          const disputedCount = settlementData.summary?.total_disputed !== undefined && parseFloat(settlementData.summary.total_disputed) > 0
+            ? rawItems.filter(i => i.is_disputed || i.status === 'DISPUTED').length
+            : rawItems.filter(i => i.is_disputed || i.status === 'DISPUTED').length;
           const paidCount = rawItems.filter(i => i.status === 'PAID').length;
+          const cancelledCount = rawItems.filter(isCancelledItem).length;
 
           return (
             <div className="space-y-6 animate-in fade-in duration-200">
@@ -1187,9 +1335,12 @@ const OwnerDashboard = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 text-xs">
                   <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-1">
-                    <p className="text-slate-500 font-extrabold uppercase tracking-wider text-[10px]">Gross Guest Tariff</p>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <p className="font-extrabold uppercase tracking-wider text-[10px]">Gross Bookings Collected</p>
+                      <IndianRupee className="w-3.5 h-3.5 text-slate-400" />
+                    </div>
                     <p className="text-xl font-black text-slate-900">₹{parseFloat(settlementData.summary?.total_gross ?? grossRevenue).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-white border border-amber-200/90 shadow-2xs space-y-1">
@@ -1197,136 +1348,29 @@ const OwnerDashboard = () => {
                     <p className="text-xl font-black text-amber-600">- ₹{parseFloat(settlementData.summary?.total_platform_commission ?? platformFee).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-white border border-indigo-200/90 shadow-2xs space-y-1">
-                    <p className="text-indigo-700 font-extrabold uppercase tracking-wider text-[10px]">In 7-Day Escrow Hold</p>
+                    <div className="flex items-center justify-between text-indigo-700">
+                      <p className="font-extrabold uppercase tracking-wider text-[10px]">In 7-Day Escrow Hold</p>
+                      <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                    </div>
                     <p className="text-xl font-black text-indigo-600">₹{parseFloat(settlementData.summary?.total_on_hold ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[10px] text-indigo-800/80 font-semibold">{onHoldCount} booking(s) holding</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200 shadow-2xs space-y-1">
-                    <p className="text-emerald-700 font-extrabold uppercase tracking-wider text-[10px]">Ready / Eligible for Payout</p>
+                    <div className="flex items-center justify-between text-emerald-700">
+                      <p className="font-extrabold uppercase tracking-wider text-[10px]">Ready / Eligible Payout</p>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    </div>
                     <p className="text-xl font-black text-emerald-600">₹{parseFloat(settlementData.summary?.total_eligible ?? netEarnings).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[10px] text-emerald-800 font-semibold">{eligibleCount} booking(s) matured</p>
                   </div>
-                </div>
-              </div>
-
-              {/* Header Strip */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/90 shadow-xs">
-                <div>
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-xs font-black uppercase tracking-wider mb-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-rose-600" /> Platform Escrow & Payout Ledger
-                  </div>
-                  <h2 className="text-xl sm:text-2xl font-black text-slate-900">Host Settlement & Escrow Ledger</h2>
-                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                    Customer room tariffs are securely collected by Book My Room. Payouts are held for 7 days post check-out to protect against disputes, cancellations, and chargebacks.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowPayoutModal(true)}
-                  className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-black transition-all flex items-center gap-2 shadow-sm shadow-sky-600/25 shrink-0 cursor-pointer"
-                >
-                  <Landmark className="w-4 h-4 stroke-[2.5]" />
-                  <span>{payoutAccount ? 'Manage Bank / UPI' : 'Register Payout Destination'}</span>
-                </button>
-              </div>
-
-              {/* Destination Verification Alert Strip */}
-              {payoutAccount?.is_verified ? (
-                <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-100 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-500">
+                      <p className="font-extrabold uppercase tracking-wider text-[10px]">Disbursed to Bank/UPI</p>
+                      <Wallet className="w-3.5 h-3.5 text-slate-400" />
                     </div>
-                    <div>
-                      <span className="font-black text-emerald-950 block">Verified Payout Destination Active</span>
-                      <span className="text-emerald-800 font-medium">
-                        Disbursements transfer to: <strong className="font-mono text-emerald-950">{payoutAccount.destination_summary}</strong> ({payoutAccount.account_holder_name}
-                        {payoutAccount.bank_name ? ` • ${payoutAccount.bank_name}` : ''})
-                      </span>
-                    </div>
+                    <p className="text-xl font-black text-slate-900">₹{parseFloat(settlementData.summary?.total_paid ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[10px] text-slate-500 font-semibold">{paidCount} payout(s) completed</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowPayoutModal(true)}
-                    className="text-emerald-900 font-bold hover:underline shrink-0 text-right cursor-pointer"
-                  >
-                    Change Payout Details →
-                  </button>
-                </div>
-              ) : (
-                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0">
-                      <Landmark className="w-5 h-5 text-amber-600" />
-                    </div>
-                    <div>
-                      <span className="font-black text-amber-950 block">⚠️ Payout Destination Required</span>
-                      <span className="text-amber-800 font-medium">
-                        Please register your verified Bank Account (NEFT/IMPS) or UPI ID so the platform admin can disburse your matured booking tariffs.
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowPayoutModal(true)}
-                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 cursor-pointer"
-                  >
-                    Add Payout Destination
-                  </button>
-                </div>
-              )}
-
-              {/* 4 Financial KPI Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-                <div className="card-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-1">
-                  <div className="flex items-center justify-between text-slate-500 font-extrabold uppercase tracking-wider text-[10px]">
-                    <span>Gross Bookings Collected</span>
-                    <IndianRupee className="w-4 h-4 text-slate-400" />
-                  </div>
-                  <h3 className="text-2xl font-black text-slate-900">
-                    ₹{parseFloat(settlementData.summary?.total_gross ?? grossRevenue).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </h3>
-                  <p className="text-[11px] text-slate-500 font-semibold pt-1">
-                    Platform commission (10%): -₹{parseFloat(settlementData.summary?.total_platform_commission ?? platformFee).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </p>
-                </div>
-
-                <div className="card-white p-5 rounded-2xl border border-indigo-200/90 shadow-2xs space-y-1">
-                  <div className="flex items-center justify-between text-indigo-700 font-extrabold uppercase tracking-wider text-[10px]">
-                    <span>In 7-Day Escrow Hold</span>
-                    <Clock className="w-4 h-4 text-indigo-600" />
-                  </div>
-                  <h3 className="text-2xl font-black text-indigo-600">
-                    ₹{parseFloat(settlementData.summary?.total_on_hold ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </h3>
-                  <p className="text-[11px] text-indigo-800/80 font-semibold pt-1">
-                    {onHoldCount} booking(s) currently in holding period
-                  </p>
-                </div>
-
-                <div className="card-white p-5 rounded-2xl border border-emerald-200/90 shadow-2xs space-y-1 bg-gradient-to-br from-emerald-50/40 to-white">
-                  <div className="flex items-center justify-between text-emerald-700 font-extrabold uppercase tracking-wider text-[10px]">
-                    <span>Ready / Eligible for Payout</span>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <h3 className="text-2xl font-black text-emerald-600">
-                    ₹{parseFloat(settlementData.summary?.total_eligible ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </h3>
-                  <p className="text-[11px] text-emerald-800 font-semibold pt-1">
-                    {eligibleCount} booking(s) matured 7-day hold
-                  </p>
-                </div>
-
-                <div className="card-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-1">
-                  <div className="flex items-center justify-between text-slate-500 font-extrabold uppercase tracking-wider text-[10px]">
-                    <span>Disbursed to Bank/UPI</span>
-                    <Wallet className="w-4 h-4 text-slate-500" />
-                  </div>
-                  <h3 className="text-2xl font-black text-slate-900">
-                    ₹{parseFloat(settlementData.summary?.total_paid ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </h3>
-                  <p className="text-[11px] text-slate-500 font-semibold pt-1">
-                    {paidCount} payout(s) completed
-                  </p>
                 </div>
               </div>
 
@@ -1387,6 +1431,17 @@ const OwnerDashboard = () => {
                     }`}
                   >
                     🎉 Disbursed ({paidCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettlementFilter('CANCELLED')}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all shrink-0 cursor-pointer ${
+                      settlementFilter === 'CANCELLED'
+                        ? 'bg-rose-600 text-white shadow-[0_4px_12px_rgba(225,29,72,0.25)]'
+                        : 'bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#0F172A] hover:bg-slate-50'
+                    }`}
+                  >
+                    ↩️ Cancelled ({cancelledCount})
                   </button>
                 </div>
 
@@ -1616,9 +1671,15 @@ const OwnerDashboard = () => {
                   <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                     ₹{grossRevenue.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                   </h3>
-                  <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-emerald-600">
-                    <ArrowUpRight className="w-4 h-4 stroke-[3]" />
-                    <span>+18.4% vs last period</span>
+                  <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-slate-500">
+                    {grossRevenue > 0 ? (
+                      <>
+                        <ArrowUpRight className="w-4 h-4 stroke-[3] text-emerald-600" />
+                        <span className="text-emerald-600">Active revenue stream</span>
+                      </>
+                    ) : (
+                      <span>No completed sales yet</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1651,10 +1712,12 @@ const OwnerDashboard = () => {
                 </div>
                 <div>
                   <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                    ₹{Math.max(1200, Math.round(grossRevenue / Math.max(1, confirmedBookings.length))).toLocaleString('en-IN')}
+                    ₹{confirmedBookings.length > 0 && grossRevenue > 0
+                      ? Math.round(grossRevenue / confirmedBookings.length).toLocaleString('en-IN')
+                      : 0}
                   </h3>
                   <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-slate-500">
-                    <span>Average per reserved stay</span>
+                    <span>{confirmedBookings.length > 0 ? 'Average per reserved stay' : 'No bookings to calculate ADR'}</span>
                   </div>
                 </div>
               </div>
@@ -1669,10 +1732,12 @@ const OwnerDashboard = () => {
                 </div>
                 <div>
                   <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                    {Math.min(100, Math.max(45, Math.round(((confirmedBookings.length * 3) / Math.max(1, totalRooms * 8)) * 100)))}%
+                    {totalRooms > 0 && confirmedBookings.length > 0
+                      ? Math.min(100, Math.round(((confirmedBookings.length * 3) / Math.max(1, totalRooms * 8)) * 100))
+                      : 0}%
                   </h3>
-                  <div className="flex items-center gap-1.5 mt-2 text-xs font-bold text-emerald-600">
-                    <span>High demand index</span>
+                  <div className={`flex items-center gap-1.5 mt-2 text-xs font-bold ${confirmedBookings.length > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    <span>{confirmedBookings.length > 0 ? 'High demand index' : '0% current occupancy'}</span>
                   </div>
                 </div>
               </div>
@@ -1684,16 +1749,23 @@ const OwnerDashboard = () => {
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-rose-600" /> Monthly Revenue & Reservation Volume
+                    <BarChart3 className="w-5 h-5 text-rose-600" />
+                    {analyticsTimeframe === '30D'
+                      ? 'Daily Revenue & Reservation Volume (Last 30 Days)'
+                      : analyticsTimeframe === '1Y'
+                      ? 'Monthly Revenue & Reservation Volume (Year 2026)'
+                      : 'Monthly Revenue & Reservation Volume (Last 6 Months)'}
                   </h3>
                   <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                    Hover over bars to inspect month-by-month earnings and confirmed guest stays
+                    {analyticsTimeframe === '30D'
+                      ? 'Hover over bars to inspect day-by-day earnings and confirmed guest stays'
+                      : 'Hover over bars to inspect month-by-month earnings and confirmed guest stays'}
                   </p>
                 </div>
                 <div className="flex items-center gap-4 text-xs font-extrabold text-slate-600">
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-full bg-gradient-to-tr from-rose-600 to-red-500"></span>
-                    <span>Monthly Revenue (₹)</span>
+                    <span>{analyticsTimeframe === '30D' ? 'Daily Revenue (₹)' : 'Monthly Revenue (₹)'}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-full bg-slate-300"></span>
@@ -1704,8 +1776,14 @@ const OwnerDashboard = () => {
 
               {/* Chart Visual Graphic Area */}
               <div className="pt-6 pb-2">
-                <div className="grid grid-cols-6 gap-3 sm:gap-6 h-64 items-end border-b border-slate-200 pb-3 px-2 sm:px-6">
-                  {monthlyAnalyticsData.map((item, idx) => (
+                <div
+                  className="h-64 items-end border-b border-slate-200 pb-3 px-1 sm:px-4 w-full grid"
+                  style={{
+                    gridTemplateColumns: `repeat(${chartAnalyticsData.length}, minmax(0, 1fr))`,
+                    gap: analyticsTimeframe === '30D' ? '4px' : '16px'
+                  }}
+                >
+                  {chartAnalyticsData.map((item, idx) => (
                     <div
                       key={item.fullLabel || idx}
                       className="flex flex-col items-center h-full justify-end group cursor-pointer relative"
@@ -1714,23 +1792,33 @@ const OwnerDashboard = () => {
                     >
                       {/* Hover Tooltip Popup */}
                       {hoveredBarIndex === idx && (
-                        <div className="absolute bottom-full mb-3 bg-slate-900 text-white p-2.5 rounded-2xl shadow-2xl border border-slate-700/80 text-center min-w-[140px] z-30 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="absolute bottom-full mb-3 bg-slate-900 text-white p-2.5 rounded-2xl shadow-2xl border border-slate-700/80 text-center min-w-[140px] z-30 pointer-events-none animate-in fade-in zoom-in-95 duration-150 whitespace-nowrap">
                           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{item.fullLabel}</p>
                           <p className="text-sm font-black text-white mt-0.5">₹{item.revenue.toLocaleString('en-IN')}</p>
-                          <p className="text-[10px] text-rose-300 font-semibold mt-0.5">{item.bookingsCount} booking(s)</p>
+                          <p className="text-[10px] text-rose-300 font-semibold mt-0.5">{item.confirmedCount || item.bookingsCount} stay(s)</p>
                         </div>
                       )}
 
                       {/* Bar Value Indicator */}
-                      <span className="text-[10px] font-black text-slate-500 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        ₹{(item.revenue / 1000).toFixed(1)}k
-                      </span>
+                      {item.revenue > 0 && (
+                        <span className="text-[10px] font-black text-slate-600 mb-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          ₹{(item.revenue / 1000).toFixed(1)}k
+                        </span>
+                      )}
 
                       {/* Animated Column Bar */}
-                      <div className="w-full max-w-[48px] bg-slate-100 rounded-2xl p-1 h-full flex flex-col justify-end">
+                      <div className={`w-full bg-slate-100 h-full flex flex-col justify-end ${
+                        analyticsTimeframe === '30D'
+                          ? 'max-w-[18px] sm:max-w-[24px] rounded-lg p-0.5'
+                          : analyticsTimeframe === '1Y'
+                          ? 'max-w-[36px] rounded-xl p-1'
+                          : 'max-w-[48px] rounded-2xl p-1'
+                      }`}>
                         <div
                           style={{ height: `${item.heightPercent}%` }}
-                          className={`w-full rounded-xl transition-all duration-500 shadow-sm ${
+                          className={`w-full transition-all duration-500 shadow-sm ${
+                            analyticsTimeframe === '30D' ? 'rounded-md' : 'rounded-xl'
+                          } ${
                             hoveredBarIndex === idx
                               ? 'bg-gradient-to-t from-rose-700 via-rose-600 to-red-500 scale-x-105 shadow-md shadow-rose-600/30'
                               : 'bg-gradient-to-t from-rose-500 via-rose-500 to-red-400 group-hover:brightness-110'
@@ -1738,10 +1826,22 @@ const OwnerDashboard = () => {
                         ></div>
                       </div>
 
-                      {/* X-Axis Month Label */}
-                      <span className="text-xs font-black text-slate-700 mt-3 group-hover:text-rose-600 transition-colors">
-                        {item.label}
-                      </span>
+                      {/* X-Axis Label */}
+                      <div className="h-6 flex items-center justify-center mt-3">
+                        {item.showLabel ? (
+                          <span className={`text-[10px] sm:text-xs font-black transition-colors whitespace-nowrap ${
+                            item.isToday
+                              ? 'text-rose-600 font-extrabold'
+                              : item.revenue > 0
+                              ? 'text-slate-900 font-black'
+                              : 'text-slate-600 group-hover:text-rose-600'
+                          }`}>
+                            {item.label}
+                          </span>
+                        ) : (
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-200 group-hover:bg-rose-500 transition-colors"></span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1810,7 +1910,7 @@ const OwnerDashboard = () => {
                   {hotelPerformanceList.map((h, i) => (
                     <div
                       key={h.id}
-                      onClick={() => setSelectedHotelForBookings(h)}
+                      onClick={() => handleViewHotelBookings(h)}
                       className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/40 hover:bg-white hover:border-sky-300 hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs cursor-pointer group"
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -1840,7 +1940,7 @@ const OwnerDashboard = () => {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedHotelForBookings(h);
+                            handleViewHotelBookings(h);
                           }}
                           className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
                           title={`View guest bookings for ${h.name}`}
@@ -1880,6 +1980,20 @@ const OwnerDashboard = () => {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setReservationTabFilter('CONFIRMED')}
+                    className={`px-3 py-1 rounded-lg transition-all ${reservationTabFilter === 'CONFIRMED' ? 'bg-white shadow-xs font-black text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
+                  >
+                    Confirmed ({bookings.filter(b => ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes((b.booking_status || b.status || '').toUpperCase()) && !isCancellationBooking(b)).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReservationTabFilter('PENDING')}
+                    className={`px-3 py-1 rounded-lg transition-all ${reservationTabFilter === 'PENDING' ? 'bg-white shadow-xs font-black text-amber-800' : 'text-slate-600 hover:text-slate-900'}`}
+                  >
+                    Pending ({bookings.filter(b => (b.booking_status || '').toUpperCase() === 'PENDING_PAYMENT' && !isCancellationBooking(b)).length})
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setReservationTabFilter('CANCELLATIONS')}
                     className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${reservationTabFilter === 'CANCELLATIONS' ? 'bg-rose-600 text-white shadow-xs font-black' : 'text-rose-700 hover:bg-rose-50'}`}
                   >
@@ -1890,13 +2004,6 @@ const OwnerDashboard = () => {
                         {bookings.filter(b => isCancellationBooking(b) && checkOwnerApprovalStatus(b) === 'PENDING' && (b.payment_status || '').toUpperCase() !== 'REFUNDED').length}
                       </span>
                     )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setReservationTabFilter('CONFIRMED')}
-                    className={`px-3 py-1 rounded-lg transition-all ${reservationTabFilter === 'CONFIRMED' ? 'bg-white shadow-xs font-black text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
-                  >
-                    Confirmed ({bookings.filter(b => !isCancellationBooking(b)).length})
                   </button>
                 </div>
 
@@ -3195,14 +3302,26 @@ const OwnerDashboard = () => {
             </div>
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="py-2 px-4 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
-              >
-                Print Voucher
-              </button>
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="py-2 px-4 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
+                >
+                  Print Voucher
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadStatementPdf(selectedStatement.id)}
+                  disabled={downloadingStatement}
+                  className="py-2 px-4 rounded-xl bg-sky-50 text-sky-800 border border-sky-300 font-bold hover:bg-sky-100 transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                  title="Download PDF statement for this settlement"
+                >
+                  <Download className="w-3.5 h-3.5 text-sky-600" />
+                  <span>{downloadingStatement ? 'Downloading...' : 'Download PDF'}</span>
+                </button>
+              </div>
 
               <button
                 type="button"
