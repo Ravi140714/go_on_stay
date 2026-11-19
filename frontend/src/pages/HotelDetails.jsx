@@ -145,24 +145,50 @@ const HotelDetails = () => {
 
   const saveRecentlyViewed = (hotelData) => {
     try {
-      if (!hotelData || !hotelData.name || hotelData.name.toLowerCase().includes('test')) {
-        return; // Do not save test hotels
+      if (!hotelData || !hotelData.id || !hotelData.name) {
+        return;
       }
-      const existing = JSON.parse(localStorage.getItem('bmr_recently_viewed') || '[]');
-      const filtered = existing.filter(item => item.id !== hotelData.id && !item.name?.toLowerCase().includes('test'));
+      const rawName = String(hotelData.name).trim();
+      if (!rawName || rawName.toLowerCase().includes('test') || rawName.toLowerCase().includes('dummy')) {
+        return; // Skip invalid or test hotels
+      }
+
+      let existing = [];
+      try {
+        const raw = localStorage.getItem('bmr_recently_viewed');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            existing = parsed.filter(item => (
+              item &&
+              item.id != null &&
+              typeof item.name === 'string' &&
+              item.name.trim().length > 0 &&
+              !item.name.toLowerCase().includes('test') &&
+              !item.name.toLowerCase().includes('dummy')
+            ));
+          }
+        }
+      } catch (parseErr) {
+        console.warn('Recovered from corrupted recently viewed storage:', parseErr);
+        existing = [];
+      }
+
+      const filtered = existing.filter(item => String(item.id) !== String(hotelData.id));
       const itemToSave = {
         id: hotelData.id,
-        name: hotelData.name,
-        city: hotelData.city,
+        name: rawName,
+        city: String(hotelData.city || 'India').trim(),
         image: hotelData.primary_image || hotelData.cover_image || (hotelData.images && hotelData.images[0]?.display_url) || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80',
-        starting_price: hotelData.starting_price || 2500,
-        guest_rating: hotelData.guest_rating || 4.8,
+        starting_price: parseFloat(hotelData.starting_price || hotelData.price_per_night || 2500),
+        guest_rating: parseFloat(hotelData.guest_rating || hotelData.star_rating || 4.8),
         viewedAt: new Date().toISOString()
       };
-      const updated = [itemToSave, ...filtered].slice(0, 5);
+
+      const updated = [itemToSave, ...filtered].slice(0, 6);
       localStorage.setItem('bmr_recently_viewed', JSON.stringify(updated));
     } catch (err) {
-      console.error('Failed to save recently viewed stay', err);
+      console.warn('Failed to sanitize/save recently viewed stay:', err);
     }
   };
 
@@ -296,30 +322,27 @@ const HotelDetails = () => {
   }
 
   return (
-    <div className="bg-[#eaf3f9] text-slate-900 min-h-screen pb-16">
+    <div className="bg-[#eaf3f9] text-slate-900 min-h-screen pb-16 overflow-x-hidden">
 
       {/* Top Breadcrumb Header */}
-      <div className="bg-[#d5e7f5]/80 backdrop-blur-md border-b border-sky-200/60 py-4 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <div className="bg-[#d5e7f5]/80 backdrop-blur-md border-b border-sky-200/60 py-3 sm:py-4 px-3 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="text-xs font-extrabold text-slate-600 hover:text-teal-600 flex items-center gap-1.5"
+            className="text-xs font-extrabold text-slate-600 hover:text-teal-600 flex items-center gap-1.5 shrink-0"
           >
-            <ArrowLeft className="w-4 h-4 text-teal-600" /> Back to Search Results
+            <ArrowLeft className="w-4 h-4 text-teal-600 shrink-0" />
+            <span className="hidden sm:inline">Back to Search Results</span>
+            <span className="sm:hidden font-extrabold">Back</span>
           </button>
 
-          <div className="flex items-center gap-2">
-            <span className="badge badge-customer">{hotel.star_rating || 5} Star Luxury</span>
-            {hotel.reviews_count > 0 && hotel.guest_rating ? (
-              <span className="text-xs font-extrabold text-slate-800 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 flex items-center gap-1.5 shadow-2xs">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="badge badge-customer hidden md:inline-flex">{hotel.star_rating || 5} Star Luxury</span>
+            {hotel.reviews_count > 0 && hotel.guest_rating && (
+              <span className="text-xs font-extrabold text-slate-800 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 hidden sm:inline-flex items-center gap-1.5 shadow-2xs">
                 <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
                 <span className="font-black text-slate-900">{Number(hotel.guest_rating).toFixed(1)} / 5.0</span>
                 <span className="text-slate-500 font-semibold">• {getRatingLabel(hotel.guest_rating)} ({hotel.reviews_count} {hotel.reviews_count === 1 ? 'review' : 'reviews'})</span>
-              </span>
-            ) : (
-              <span className="text-xs font-extrabold text-amber-900 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span>New Property (0 guest reviews)</span>
               </span>
             )}
 
@@ -327,23 +350,35 @@ const HotelDetails = () => {
             <button
               type="button"
               onClick={handleToggleWishlist}
-              className={`px-3.5 py-1.5 rounded-full border text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer ${isSavedWishlist
+              className={`px-3 sm:px-3.5 py-1.5 rounded-full border text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer shrink-0 ${isSavedWishlist
                 ? 'bg-rose-50 border-rose-200 text-rose-600 font-black'
                 : 'bg-white border-slate-200 text-slate-700 hover:text-rose-600 hover:border-rose-200'
                 }`}
             >
               <Heart className={`w-3.5 h-3.5 ${isSavedWishlist ? 'fill-rose-600 text-rose-600' : ''}`} />
-              <span>{isSavedWishlist ? 'Saved in Wishlist' : 'Save to Wishlist'}</span>
+              <span className="hidden sm:inline">{isSavedWishlist ? 'Saved in Wishlist' : 'Save to Wishlist'}</span>
+              <span className="sm:hidden">{isSavedWishlist ? 'Saved' : 'Save'}</span>
             </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 space-y-6 sm:space-y-8">
 
         {/* Hotel Main Header Title */}
         <div className="space-y-2">
-          <h1 className="text-3xl sm:text-4xl font-black text-slate-900">{hotel.name}</h1>
+          {/* Mobile badges row displayed above title on small screens */}
+          <div className="flex flex-wrap items-center gap-2 sm:hidden">
+            <span className="badge badge-customer text-[10.5px] py-0.5 px-2.5">{hotel.star_rating || 5} Star Luxury</span>
+            {hotel.reviews_count > 0 && hotel.guest_rating && (
+              <span className="text-[11px] font-extrabold text-slate-800 bg-white px-2.5 py-0.5 rounded-full border border-slate-200 inline-flex items-center gap-1 shadow-2xs">
+                <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
+                <span className="font-black text-slate-900">{Number(hotel.guest_rating).toFixed(1)}</span>
+                <span className="text-slate-500 font-medium">({hotel.reviews_count})</span>
+              </span>
+            )}
+          </div>
+          <h1 className="text-2xl sm:text-4xl font-black text-slate-900 leading-tight">{hotel.name}</h1>
           <p className="text-xs font-bold text-slate-500 flex items-center gap-1.5">
             <MapPin className="w-4 h-4 text-teal-600 shrink-0" />
             {hotel.address}, {hotel.city}, {hotel.state} {hotel.zip_code}
@@ -523,11 +558,11 @@ const HotelDetails = () => {
 
           {/* Main Column: Available Rooms */}
           <div className="lg:col-span-8 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                <BedDouble className="w-5 h-5 text-teal-600" /> Available Rooms for Your Dates
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2">
+                <BedDouble className="w-5 h-5 text-teal-600 shrink-0" /> Available Rooms for Your Dates
               </h2>
-              <span className="text-xs font-extrabold text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200">
+              <span className="text-[10px] sm:text-xs font-extrabold text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200 shrink-0">
                 100% Real-Time Inventory Checked
               </span>
             </div>

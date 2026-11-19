@@ -13,11 +13,24 @@ import CategoryTabs from '../components/CategoryTabs';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 
+const DEFAULT_CITY_IMAGES = {
+  jaipur: 'https://images.unsplash.com/photo-1477587458883-47145ed94245?auto=format&fit=crop&w=800&q=80',
+  udaipur: 'https://images.unsplash.com/photo-1595815771614-ade9d652a65d?auto=format&fit=crop&w=800&q=80',
+  mumbai: 'https://images.unsplash.com/photo-1570168007204-dfb528c6958f?auto=format&fit=crop&w=800&q=80',
+  goa: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=800&q=80',
+  ahmedabad: 'https://images.unsplash.com/photo-1609137144813-7d9921338f24?auto=format&fit=crop&w=800&q=80',
+  delhi: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?auto=format&fit=crop&w=800&q=80',
+  manali: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?auto=format&fit=crop&w=800&q=80',
+  bengaluru: 'https://images.unsplash.com/photo-1596176530529-78163a4f7af2?auto=format&fit=crop&w=800&q=80',
+  bangalore: 'https://images.unsplash.com/photo-1596176530529-78163a4f7af2?auto=format&fit=crop&w=800&q=80',
+};
+
 const Home = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { user, showToast } = useAuth();
 
+  const [allProperties, setAllProperties] = useState([]);
   const [featuredHotels, setFeaturedHotels] = useState([]);
   const [loadingHotels, setLoadingHotels] = useState(true);
   const [hotelError, setHotelError] = useState(false);
@@ -70,9 +83,22 @@ const Home = () => {
   const [activeCities, setActiveCities] = useState([]);
 
   useEffect(() => {
+    fetchAllProperties();
     fetchFeaturedHotels();
     fetchActiveCities();
   }, []);
+
+  const fetchAllProperties = async () => {
+    try {
+      const data = await hotelService.getHotels();
+      const rawList = data?.results || data || [];
+      if (Array.isArray(rawList)) {
+        setAllProperties(rawList);
+      }
+    } catch (e) {
+      console.warn('Failed to load all properties for destinations:', e);
+    }
+  };
 
   const fetchActiveCities = async () => {
     try {
@@ -85,11 +111,17 @@ const Home = () => {
     }
   };
 
-  const fetchFeaturedHotels = async () => {
+  const fetchFeaturedHotels = async (category = selectedCategory) => {
     setLoadingHotels(true);
     setHotelError(false);
     try {
-      const data = await hotelService.getHotels();
+      const params = {};
+      if (category === 'VILLAS') {
+        params.property_type = 'VILLA,HOMESTAY';
+      } else if (category === 'HOTELS') {
+        params.property_type = 'HOTEL,RESORT';
+      }
+      const data = await hotelService.getHotels(params);
       const rawList = data.results || data || [];
       const sorted = [...rawList].sort((a, b) => {
         const ratingA = a.guest_rating !== null && a.guest_rating !== undefined ? parseFloat(a.guest_rating) : (a.star_rating || 0);
@@ -116,11 +148,14 @@ const Home = () => {
   const popularCities = useMemo(() => {
     if (!activeCities || activeCities.length === 0) return [];
     return activeCities.map((cityName) => {
-      const hotelsInCity = (featuredHotels || []).filter(
-        (h) => (h.city || '').toLowerCase() === cityName.toLowerCase()
+      const lowerCity = (cityName || '').toLowerCase();
+      const propertiesPool = allProperties.length > 0 ? allProperties : featuredHotels;
+      const hotelsInCity = propertiesPool.filter(
+        (h) => (h.city || '').toLowerCase() === lowerCity
       );
       const firstImgHotel = hotelsInCity.find((h) => h.primary_image || h.cover_image || (h.images && h.images[0]?.display_url));
-      const imgUrl = firstImgHotel?.primary_image || firstImgHotel?.cover_image || firstImgHotel?.images?.[0]?.display_url || null;
+      const hotelImg = firstImgHotel?.primary_image || firstImgHotel?.cover_image || firstImgHotel?.images?.[0]?.display_url || null;
+      const imgUrl = hotelImg || DEFAULT_CITY_IMAGES[lowerCity] || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
 
       return {
         name: cityName,
@@ -128,7 +163,7 @@ const Home = () => {
         image: imgUrl,
       };
     });
-  }, [activeCities, featuredHotels]);
+  }, [activeCities, allProperties, featuredHotels]);
 
   // Infinite loop array for slider
   const infinitePopularCities = useMemo(() => {
@@ -224,29 +259,73 @@ const Home = () => {
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem('bmr_recently_viewed') || '[]');
-      // Filter out any test/dummy hotels automatically
+      const raw = localStorage.getItem('bmr_recently_viewed');
+      if (!raw) {
+        setRecentlyViewed([]);
+        return;
+      }
+      const saved = JSON.parse(raw);
+      // Strictly sanitize: ensure valid ID, valid non-empty string name, and remove dummy/corrupt records
       const clean = Array.isArray(saved)
-        ? saved.filter(h => h && h.name && !h.name.toLowerCase().includes('test'))
+        ? saved.filter(h => (
+            h &&
+            h.id != null &&
+            typeof h.name === 'string' &&
+            h.name.trim().length > 0 &&
+            !h.name.toLowerCase().includes('test') &&
+            !h.name.toLowerCase().includes('dummy')
+          ))
         : [];
       setRecentlyViewed(clean);
-      localStorage.setItem('bmr_recently_viewed', JSON.stringify(clean));
+      if (clean.length > 0) {
+        localStorage.setItem('bmr_recently_viewed', JSON.stringify(clean));
+      } else {
+        localStorage.removeItem('bmr_recently_viewed');
+      }
     } catch (e) {
+      console.warn('Purged corrupted recently viewed storage entry:', e);
       setRecentlyViewed([]);
+      localStorage.removeItem('bmr_recently_viewed');
     }
   }, []);
 
   const handleRemoveRecent = (e, idToRemove) => {
-    e.stopPropagation();
-    const updated = recentlyViewed.filter(item => item.id !== idToRemove);
+    if (e) {
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    }
+    const updated = recentlyViewed.filter(item => String(item.id) !== String(idToRemove));
     setRecentlyViewed(updated);
-    localStorage.setItem('bmr_recently_viewed', JSON.stringify(updated));
+    try {
+      if (updated.length > 0) {
+        localStorage.setItem('bmr_recently_viewed', JSON.stringify(updated));
+      } else {
+        localStorage.removeItem('bmr_recently_viewed');
+        localStorage.setItem('bmr_recently_viewed', '[]');
+      }
+    } catch (err) {
+      console.warn('Storage error on remove recent:', err);
+    }
   };
 
   const handleClearAllRecent = (e) => {
-    e.stopPropagation();
+    if (e) {
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    }
     setRecentlyViewed([]);
-    localStorage.removeItem('bmr_recently_viewed');
+    setShowRecentPopover(false);
+    try {
+      localStorage.removeItem('bmr_recently_viewed');
+      localStorage.setItem('bmr_recently_viewed', '[]');
+      localStorage.removeItem('recently_viewed_hotels');
+      sessionStorage.removeItem('bmr_recently_viewed');
+    } catch (err) {
+      console.warn('Storage error on clear recent:', err);
+    }
+    if (typeof showToast === 'function') {
+      showToast('Cleared all recently viewed stays.', 'info');
+    }
   };
 
   useEffect(() => {
@@ -261,11 +340,12 @@ const Home = () => {
 
   // Extract hotel photos from user database hotels for the hero mosaic grid
   const heroHotelPhotos = useMemo(() => {
-    if (!featuredHotels || featuredHotels.length === 0) {
+    const pool = allProperties.length > 0 ? allProperties : featuredHotels;
+    if (!pool || pool.length === 0) {
       return [];
     }
     const list = [];
-    featuredHotels.forEach((hotel) => {
+    pool.forEach((hotel) => {
       if (hotel.primary_image) {
         list.push({
           id: hotel.id,
@@ -318,7 +398,15 @@ const Home = () => {
               {/* RECENTLY VIEWED HOTELS / RECENT SEARCHES BUTTON & POPUP */}
               <div className="pt-1 flex items-center relative z-40" ref={recentPopoverRef}>
                 <button
-                  onClick={() => setShowRecentPopover(!showRecentPopover)}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowRecentPopover((prev) => !prev);
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
                   className="px-4 py-2 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 shadow-2xs hover:shadow-md text-xs font-extrabold text-slate-700 hover:text-[#207a72] flex items-center gap-2 transition-all cursor-pointer group"
                 >
                   <Clock className="w-3.5 h-3.5 text-[#207a72] group-hover:rotate-12 transition-transform" />
@@ -330,7 +418,10 @@ const Home = () => {
 
                 {/* DROPDOWN POPOVER */}
                 {showRecentPopover && (
-                  <div className="absolute top-full mt-2 w-80 sm:w-96 rounded-3xl bg-white/98 backdrop-blur-xl border border-slate-200 shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-200 z-50 text-left">
+                  <div
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="absolute top-full mt-2 w-80 sm:w-96 rounded-3xl bg-white/98 backdrop-blur-xl border border-slate-200 shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-200 z-50 text-left"
+                  >
                     <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-slate-100">
                       <div className="flex items-center gap-2">
                         <div className="p-1.5 rounded-xl bg-teal-50 text-[#207a72]">
@@ -344,16 +435,32 @@ const Home = () => {
                       <div className="flex items-center gap-2">
                         {recentlyViewed && recentlyViewed.length > 0 && (
                           <button
+                            type="button"
                             onClick={handleClearAllRecent}
-                            className="text-[10px] font-bold text-slate-400 hover:text-rose-600 transition-colors cursor-pointer px-1 py-0.5 rounded"
-                            title="Clear recent history"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              handleClearAllRecent(e);
+                            }}
+                            onTouchEnd={(e) => {
+                              e.stopPropagation();
+                              handleClearAllRecent(e);
+                            }}
+                            className="text-xs font-black text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 transition-all cursor-pointer px-2.5 py-1 rounded-lg active:scale-95 shadow-2xs shrink-0"
+                            title="Clear all recent history"
                           >
                             Clear All
                           </button>
                         )}
                         <button
-                          onClick={() => setShowRecentPopover(false)}
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowRecentPopover(false);
+                          }}
+                          onMouseDown={(e) => e.stopPropagation()}
                           className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+                          title="Close"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -390,7 +497,7 @@ const Home = () => {
                               <button
                                 type="button"
                                 onClick={(e) => handleRemoveRecent(e, item.id)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-100/50 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-100/50 transition-colors cursor-pointer sm:opacity-0 sm:group-hover:opacity-100"
                                 title="Remove from history"
                               >
                                 <X className="w-3.5 h-3.5" />
@@ -400,18 +507,9 @@ const Home = () => {
                           </div>
                         ))
                       ) : (
-                        <div className="py-6 text-center space-y-3">
-                          <Sparkles className="w-6 h-6 text-slate-300 mx-auto" />
-                          <p className="text-xs font-bold text-slate-500">No recent views yet</p>
-                          <div className="space-y-1.5 pt-1">
-                            <div
-                              onClick={() => { setShowRecentPopover(false); navigate('/search'); }}
-                              className="p-2 rounded-xl bg-slate-50 hover:bg-teal-50 border border-slate-200 text-xs font-bold text-slate-700 hover:text-[#207a72] flex items-center justify-between cursor-pointer"
-                            >
-                              <span>Explore All Destinations</span>
-                              <ArrowRight className="w-3.5 h-3.5 text-[#207a72]" />
-                            </div>
-                          </div>
+                        <div className="py-6 text-center space-y-2">
+                          <Clock className="w-6 h-6 text-slate-300 mx-auto" />
+                          <p className="text-xs font-bold text-slate-500">No recently viewed hotels</p>
                         </div>
                       )}
                     </div>
@@ -607,6 +705,7 @@ const Home = () => {
             onSelectCategory={(cat) => {
               setSelectedCategory(cat);
               setSelectedCityFilter('ALL');
+              fetchFeaturedHotels(cat);
             }}
             className="mb-0 border-b-0"
           />

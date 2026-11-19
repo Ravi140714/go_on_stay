@@ -44,7 +44,12 @@ const BookingConfirmation = () => {
   };
 
   const handlePrint = () => {
-    window.print();
+    try {
+      window.print();
+    } catch (err) {
+      console.error('Print dialog error:', err);
+      showToast('Could not open print dialog. Please use browser print (Ctrl+P).', 'error');
+    }
   };
 
   const handleResendEmail = async () => {
@@ -173,10 +178,10 @@ const BookingConfirmation = () => {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b-2 border-slate-900 pb-6 gap-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-2xl shadow-md">
-                B
+                G
               </div>
               <div>
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Book<span className="text-teal-600">My</span>Room</h2>
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Go<span className="text-rose-500">On</span>Stay</h2>
                 <p className="text-[11px] text-slate-500 uppercase tracking-widest font-extrabold">Official Stay Reservation & Tax Invoice</p>
               </div>
             </div>
@@ -381,12 +386,12 @@ const BookingConfirmation = () => {
 
           {/* Official Footer / Security Certificate */}
           <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-500 font-semibold gap-3">
-            <div className="flex items-center gap-1.5 text-teal-700 font-bold">
-              <ShieldCheck className="w-4 h-4 text-teal-600" />
-              Verified 256-Bit Encrypted Payment Certificate • Book My Room Official Invoice
+            <div className="flex items-center gap-1.5 text-rose-700 font-bold">
+              <ShieldCheck className="w-4 h-4 text-rose-600" />
+              Verified 256-Bit Encrypted Payment Certificate • GoOnStay Official Invoice
             </div>
             <div>
-              Support Email: <span className="text-slate-900 font-bold">support@bookmyroom.com</span>
+              Support Email: <span className="text-slate-900 font-bold">support@goonstay.com</span>
             </div>
           </div>
 

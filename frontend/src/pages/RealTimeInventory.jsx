@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom';
 import {
   Calendar, Layers, CheckCircle2, RefreshCw, Zap, ShieldCheck,
   Building2, Users, ArrowRight, Sparkles, Sliders, Bell,
-  Clock, BedDouble, Lock, ArrowUpRight
+  Clock, BedDouble, Lock, ArrowUpRight, MapPin
 } from 'lucide-react';
-import api from '../services/api';
+import { roomService } from '../services';
 
 const RealTimeInventory = () => {
   const [liveRooms, setLiveRooms] = useState([]);
@@ -18,8 +18,8 @@ const RealTimeInventory = () => {
   const fetchLiveRooms = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/rooms/?page_size=6');
-      const list = res.data?.results || (Array.isArray(res.data) ? res.data : []);
+      const data = await roomService.getRooms({ page_size: 9 });
+      const list = data?.results || (Array.isArray(data) ? data : []);
       setLiveRooms(list);
     } catch (err) {
       console.error('Failed to load real room inventory:', err);
@@ -138,34 +138,61 @@ const RealTimeInventory = () => {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {liveRooms.map((room) => {
                 const remaining = room.available_count ?? room.total_rooms ?? 1;
                 const isAvail = room.is_available !== false && remaining > 0;
+                const imgUrl = room.primary_image || (room.images && room.images[0]?.image);
 
                 return (
                   <div
                     key={room.id}
-                    className="p-5 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-teal-50/40 hover:border-teal-300 transition-all shadow-2xs group relative space-y-3"
+                    className="rounded-2xl border border-slate-200 bg-white hover:border-teal-400 transition-all shadow-xs hover:shadow-lg overflow-hidden group flex flex-col justify-between"
                   >
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="min-w-0">
-                        <span className="text-[11px] font-black text-slate-400 block uppercase tracking-wider truncate">
-                          {room.hotel_name || 'Verified Property'} • {room.hotel_city || 'India'}
-                        </span>
-                        <h4 className="text-sm font-black text-slate-900 group-hover:text-teal-700 transition-colors truncate">
-                          {room.title}
-                        </h4>
-                        <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded mt-1 inline-block">
-                          {room.room_type}
-                        </span>
+                    <div>
+                      {imgUrl && (
+                        <div className="h-36 w-full overflow-hidden relative bg-slate-100">
+                          <img
+                            src={imgUrl}
+                            alt={room.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          <div className="absolute top-2.5 right-2.5">
+                            {getStatusBadge(isAvail, remaining)}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="p-5 space-y-2">
+                        {!imgUrl && (
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded">
+                              {room.room_type}
+                            </span>
+                            {getStatusBadge(isAvail, remaining)}
+                          </div>
+                        )}
+
+                        <div className="min-w-0">
+                          <span className="text-[11px] font-bold text-slate-500 block uppercase tracking-wider truncate">
+                            {room.hotel_name || 'Verified Property'} • {room.hotel_city || 'India'}
+                          </span>
+                          <h4 className="text-sm font-black text-slate-900 group-hover:text-teal-700 transition-colors truncate">
+                            {room.title}
+                          </h4>
+                          {imgUrl && (
+                            <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded mt-1 inline-block">
+                              {room.room_type}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      {getStatusBadge(isAvail, remaining)}
                     </div>
 
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-200/80 text-xs">
+                    <div className="px-5 pb-5 pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
                       <span className="font-bold text-teal-600">
-                        ₹{parseFloat(room.price_per_night || 0).toLocaleString('en-IN')} <span className="text-slate-400 text-[10px]">/ night</span>
+                        ₹{parseFloat(room.price_per_night || 0).toLocaleString('en-IN')}{' '}
+                        <span className="text-slate-400 text-[10px]">/ night</span>
                       </span>
                       {room.hotel && (
                         <Link

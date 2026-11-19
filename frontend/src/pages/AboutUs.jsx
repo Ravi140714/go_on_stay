@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import {
   Hotel, ShieldCheck, Tag, CheckCircle2, Award, Users, Building2,
   Lock, Sparkles, Clock, Heart, Star, PhoneCall
@@ -73,7 +72,7 @@ const AboutUs = () => {
         </div>
 
         {/* Additional Platform Features */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="card-white p-8 flex items-start gap-5 border border-slate-200">
             <div className="w-12 h-12 rounded-2xl bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-600 shrink-0">
               <Lock className="w-6 h-6" />
@@ -96,44 +95,6 @@ const AboutUs = () => {
                 Immediately receive a verified digital voucher with unique booking ID upon successful payment verification to present at hotel check-in desk.
               </p>
             </div>
-          </div>
-        </div>
-
-        {/* Live Platform Stats */}
-        <div className="card-white p-8 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-3xl border border-slate-800 shadow-xl mb-16">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center divide-y md:divide-y-0 md:divide-x divide-slate-800">
-            <div className="p-4 space-y-1">
-              <h4 className="text-3xl font-black text-teal-400">100+</h4>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Verified Hotels</p>
-            </div>
-            <div className="p-4 space-y-1">
-              <h4 className="text-3xl font-black text-teal-400">5,000+</h4>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Booked Nights</p>
-            </div>
-            <div className="p-4 space-y-1">
-              <h4 className="text-3xl font-black text-teal-400">4.8 ★</h4>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Guest Rating</p>
-            </div>
-            <div className="p-4 space-y-1">
-              <h4 className="text-3xl font-black text-teal-400">24 / 7</h4>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Customer Support</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Call to Action Banner */}
-        <div className="card-white p-10 text-center space-y-6 bg-teal-50/60 border border-teal-200 rounded-3xl">
-          <h3 className="text-2xl font-black text-slate-900">Ready to Book Your Next Stay?</h3>
-          <p className="text-xs text-slate-600 max-w-lg mx-auto font-medium">
-            Explore handpicked hotels across top Indian destinations with direct owner pricing and instant confirmation.
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link to="/search" className="btn-teal inline-flex items-center justify-center py-3 px-8 text-xs font-extrabold uppercase tracking-wider shadow-lg shadow-teal-600/30">
-              Browse All Hotels
-            </Link>
-            <Link to="/register" className="btn-dark inline-flex items-center justify-center py-3 px-8 text-xs font-extrabold uppercase tracking-wider">
-              List Your Hotel Property
-            </Link>
           </div>
         </div>
 

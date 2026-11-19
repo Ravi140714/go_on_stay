@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Calendar, Users, Building2, ShieldCheck, Tag,
-  ArrowLeft, User, Mail, Phone, KeyRound, CheckCircle2, Lock, Utensils, Clock, Sparkles, MapPin, Star
+  Calendar, Users, Building2, Tag,
+  User, Mail, Phone, KeyRound, CheckCircle2, Lock, Utensils, Clock, Sparkles, MapPin, Star
 } from 'lucide-react';
 import api from '../services/api';
 import { hotelService, roomService, bookingService, couponService } from '../services';
@@ -74,6 +74,34 @@ const BookingPage = () => {
   const [couponLoading, setCouponLoading] = useState(false);
   const [availableCoupons, setAvailableCoupons] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
+
+  const rightContainerRef = useRef(null);
+  const [fixedStyle, setFixedStyle] = useState({});
+
+  useEffect(() => {
+    const updatePosition = () => {
+      if (rightContainerRef.current && window.innerWidth >= 1024) {
+        const rect = rightContainerRef.current.getBoundingClientRect();
+        setFixedStyle({
+          position: 'fixed',
+          top: '112px',
+          left: `${rect.left}px`,
+          width: `${rect.width}px`,
+          zIndex: 30,
+        });
+      } else {
+        setFixedStyle({});
+      }
+    };
+
+    updatePosition();
+    const timer = setTimeout(updatePosition, 100);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [loading, hotel]);
 
   useEffect(() => {
     fetchAvailableCoupons();
@@ -322,32 +350,8 @@ const BookingPage = () => {
 
   return (
     <div className="min-h-screen pb-16 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
-      
-      {/* Top Header */}
-      <div className="bg-[#d5e7f5]/80 backdrop-blur-md border-b border-sky-200/60 py-4 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <button
-            onClick={() => navigate(-1)}
-            className="text-xs font-extrabold text-slate-600 hover:text-teal-600 flex items-center gap-1.5"
-          >
-            <ArrowLeft className="w-4 h-4 text-teal-600" /> Back to Hotel Details
-          </button>
-          <div className="flex items-center gap-2 text-xs font-bold text-teal-800 bg-teal-50 px-3 py-1 rounded-full border border-teal-200">
-            <ShieldCheck className="w-4 h-4 text-teal-600" /> 100% Price Lock & Secure Reservation
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
-        
-        <div className="border-b border-slate-200 pb-4">
-          <h1 className="text-3xl font-black text-slate-900">Complete Your Stay Reservation</h1>
-          <p className="text-xs text-slate-500 font-semibold">
-            Review your stay details, meal plan upgrade, arrival time, and proceed to Razorpay payment
-          </p>
-        </div>
-
-        <form onSubmit={handleCreatePendingBooking} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+        <form onSubmit={handleCreatePendingBooking} className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
           {/* Main Column: Stay Summary, Room Number Picker, Meal Plan, Arrival Time, Guest Details */}
           <div className="lg:col-span-8 space-y-6">
@@ -615,8 +619,12 @@ const BookingPage = () => {
 
           </div>
 
-          {/* Right Column: Pricing Breakdown & Payment Trigger (Sticky Sidebar) */}
-          <div className="lg:col-span-4 lg:sticky lg:top-24 space-y-6 max-h-[calc(100vh-7rem)] overflow-y-auto pr-1">
+          {/* Right Column: Pricing Breakdown & Payment Trigger (Fixed Sidebar like MakeMyTrip) */}
+          <div ref={rightContainerRef} className="lg:col-span-4 relative">
+            <div
+              style={fixedStyle}
+              className="space-y-5 max-h-[calc(100vh-125px)] overflow-y-auto no-scrollbar"
+            >
 
             {/* Promo Code Card */}
             <div className="card-white p-5 border border-slate-200/90 shadow-xs space-y-3.5 rounded-2xl">
@@ -672,7 +680,7 @@ const BookingPage = () => {
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Available Offers & Deals</span>
                     <span className="text-[10px] font-bold text-rose-600">{availableCoupons.length} coupons</span>
                   </div>
-                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                     {availableCoupons.map((c) => (
                       <div
                         key={c.id || c.code}
@@ -756,6 +764,7 @@ const BookingPage = () => {
               </button>
             </div>
 
+            </div>
           </div>
 
         </form>

@@ -290,11 +290,22 @@ const Navbar = () => {
           
           {/* Logo */}
           <Link to="/" className="flex items-center gap-1.5 group shrink-0">
-            <img
-              src="/logo.png"
-              alt="GoOnStay Logo"
-              className="h-12 sm:h-14 w-auto object-contain rounded-xl hover:scale-105 transition-transform duration-300"
-            />
+            <div className="h-12 sm:h-14 w-12 sm:w-14 rounded-xl overflow-hidden shrink-0 flex items-center justify-center">
+              <video
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="h-full w-full object-cover rounded-xl group-hover:scale-105 transition-transform duration-300"
+              >
+                <source src="/logo-animated.mp4" type="video/mp4" />
+                <img
+                  src="/logo.png"
+                  alt="GoOnStay Logo"
+                  className="h-12 sm:h-14 w-auto object-contain rounded-xl"
+                />
+              </video>
+            </div>
             <div>
               <div className="text-lg sm:text-2xl font-extrabold tracking-tight flex items-center gap-1 text-slate-900 leading-tight">
                 <span>Go<span className="text-rose-600">On</span>Stay</span>

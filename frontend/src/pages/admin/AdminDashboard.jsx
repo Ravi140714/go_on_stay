@@ -2053,10 +2053,7 @@ const AdminDashboard = () => {
                 <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                   {hotelsList.length}
                 </h3>
-                <div className="flex items-center justify-between mt-2 text-xs">
-                  <span className="text-emerald-600 font-extrabold flex items-center gap-0.5">
-                    ↗ +12%
-                  </span>
+                <div className="mt-2 text-xs">
                   <span className="text-slate-900 font-bold text-[11px]">
                     {approvedHotelsCount} Live • {pendingHotelsCount} Pending
                   </span>
@@ -2079,10 +2076,7 @@ const AdminDashboard = () => {
                 <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                   {bookingsList.length.toLocaleString('en-IN')}
                 </h3>
-                <div className="flex items-center justify-between mt-2 text-xs">
-                  <span className="text-emerald-600 font-extrabold flex items-center gap-0.5">
-                    ↗ +18%
-                  </span>
+                <div className="mt-2 text-xs">
                   <span className="text-slate-900 font-bold text-[11px]">
                     {confirmedBookingsCount} Confirmed Stays
                   </span>
@@ -2105,10 +2099,7 @@ const AdminDashboard = () => {
                 <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                   {usersList.length.toLocaleString('en-IN')}
                 </h3>
-                <div className="flex items-center justify-between mt-2 text-xs">
-                  <span className="text-emerald-600 font-extrabold flex items-center gap-0.5">
-                    ↗ +15%
-                  </span>
+                <div className="mt-2 text-xs">
                   <span className="text-slate-900 font-bold text-[11px]">
                     {totalOwnersCount} Hotel Owners
                   </span>
@@ -2131,10 +2122,7 @@ const AdminDashboard = () => {
                 <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                   ₹{totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </h3>
-                <div className="flex items-center justify-between mt-2 text-xs">
-                  <span className="text-emerald-600 font-extrabold flex items-center gap-0.5">
-                    ↗ +22%
-                  </span>
+                <div className="mt-2 text-xs">
                   <span className="text-slate-900 font-bold text-[11px]">
                     {capturedPayments.length} Captured Stays
                   </span>

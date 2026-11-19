@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Building2, BedDouble, CalendarCheck, IndianRupee, Plus,
@@ -17,7 +17,8 @@ import {
   ownerEarningService,
   ownerPayoutService,
   notificationService,
-  profileService
+  profileService,
+  supportService
 } from '../../services';
 import { useAuth } from '../../context/AuthContext';
 import { formatDisplayDate } from '../../utils/dateUtils';
@@ -70,6 +71,7 @@ const OwnerDashboard = () => {
 
   const [hotels, setHotels] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processingRefundId, setProcessingRefundId] = useState(null);
 
@@ -91,6 +93,30 @@ const OwnerDashboard = () => {
       navigate('/owner/dashboard/properties', { replace: true });
     }
   }, [subTab]);
+
+  const isFirstMountRef = useRef(true);
+
+  useEffect(() => {
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      return; // Initial load is handled completely by fetchOwnerData() on mount
+    }
+    if (activeTab === 'SETTING_NOTIFICATIONS') {
+      fetchOwnerNotifications();
+    } else if (activeTab === 'SETTING_PAYOUT') {
+      fetchPayoutAccount();
+    } else if (activeTab === 'SETTING_PROFILE') {
+      fetchOwnerProfile();
+    } else if (activeTab === 'BOOKED_ROOMS') {
+      fetchOwnerBookings();
+    } else if (activeTab === 'SETTLEMENTS') {
+      fetchSettlements();
+    } else if (activeTab === 'REVIEWS') {
+      fetchOwnerReviews();
+    } else if (activeTab === 'PROPERTIES' || activeTab === 'ROOM_OCCUPANCY') {
+      fetchHotelsAndRooms();
+    }
+  }, [activeTab]);
 
   const [selectedHotelFilter, setSelectedHotelFilter] = useState('ALL');
 
@@ -205,12 +231,13 @@ const OwnerDashboard = () => {
   const fetchOwnerData = async () => {
     setLoading(true);
     try {
-      const [hotelsRes, bookingsRes, settlementsRes, payoutRes, reviewsRes] = await Promise.allSettled([
+      const [hotelsRes, bookingsRes, settlementsRes, payoutRes, reviewsRes, ticketsRes] = await Promise.allSettled([
         ownerDashboardService.getOwnerHotels(),
         ownerBookingService.getOwnerBookings(),
         ownerEarningService.getSettlements(),
         ownerPayoutService.getPayoutAccount(),
-        ownerDashboardService.getOwnerReviews()
+        ownerDashboardService.getOwnerReviews(),
+        supportService.getTickets()
       ]);
       if (hotelsRes.status === 'fulfilled') {
         const rawHotels = hotelsRes.value?.results || hotelsRes.value || [];
@@ -229,6 +256,10 @@ const OwnerDashboard = () => {
       if (bookingsRes.status === 'fulfilled') setBookings(bookingsRes.value?.results || bookingsRes.value);
       if (settlementsRes.status === 'fulfilled') setSettlementData(settlementsRes.value || { summary: {}, results: [] });
       if (reviewsRes.status === 'fulfilled') setReviews(reviewsRes.value?.results || reviewsRes.value || []);
+      if (ticketsRes.status === 'fulfilled') {
+        const tList = ticketsRes.value?.results || ticketsRes.value || [];
+        setTickets(Array.isArray(tList) ? tList : []);
+      }
       if (payoutRes.status === 'fulfilled') {
         const acc = payoutRes.value?.account || payoutRes.value;
         if (acc && (acc.masked_account_number || acc.masked_upi_id || acc.account_holder_name)) {
@@ -263,6 +294,93 @@ const OwnerDashboard = () => {
       console.error('Failed to load notifications:', err);
     } finally {
       setLoadingNotifications(false);
+    }
+  };
+
+  const fetchPayoutAccount = async () => {
+    try {
+      const res = await ownerPayoutService.getPayoutAccount();
+      const acc = res?.account || res;
+      if (acc && (acc.masked_account_number || acc.masked_upi_id || acc.account_holder_name)) {
+        setPayoutAccount(acc);
+        setPayoutForm((prev) => ({
+          ...prev,
+          account_type: acc.account_type || acc.payout_method || 'BANK_ACCOUNT',
+          account_holder_name: acc.account_holder_name || '',
+          bank_name: acc.bank_name || '',
+          ifsc_code: acc.ifsc_code || '',
+          upi_id: acc.upi_id || '',
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to load payout account:', err);
+    }
+  };
+
+  const fetchOwnerProfile = async () => {
+    try {
+      const data = await profileService.getProfile();
+      if (data) {
+        setProfileForm((prev) => ({
+          ...prev,
+          first_name: data.first_name ?? prev.first_name,
+          last_name: data.last_name ?? prev.last_name,
+          email: data.email ?? prev.email,
+          phone_number: data.phone_number ?? prev.phone_number,
+          bio: data.bio ?? prev.bio,
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+    }
+  };
+
+  const fetchOwnerBookings = async () => {
+    try {
+      const res = await ownerBookingService.getOwnerBookings();
+      const list = res?.results || res || [];
+      if (Array.isArray(list)) {
+        setBookings(list);
+      }
+    } catch (err) {
+      console.error('Failed to load guest reservations:', err);
+    }
+  };
+
+  const fetchSettlements = async () => {
+    try {
+      const data = await ownerEarningService.getSettlements();
+      setSettlementData(data || { summary: {}, results: [] });
+    } catch (err) {
+      console.error('Failed to load settlements:', err);
+    }
+  };
+
+  const fetchOwnerReviews = async () => {
+    try {
+      const data = await ownerDashboardService.getOwnerReviews();
+      setReviews(data?.results || data || []);
+    } catch (err) {
+      console.error('Failed to load reviews:', err);
+    }
+  };
+
+  const fetchHotelsAndRooms = async () => {
+    try {
+      const rawHotels = await ownerDashboardService.getOwnerHotels();
+      const hotelsList = rawHotels?.results || rawHotels || [];
+      const hotelsWithRooms = await Promise.all(hotelsList.map(async (h) => {
+        try {
+          const rData = await ownerRoomService.getRoomsByHotel(h.id);
+          const rList = rData?.results || rData || [];
+          return { ...h, rooms: rList };
+        } catch (e) {
+          return h;
+        }
+      }));
+      setHotels(hotelsWithRooms);
+    } catch (err) {
+      console.error('Failed to load hotels and rooms:', err);
     }
   };
 
@@ -399,17 +517,19 @@ const OwnerDashboard = () => {
 
       // Check if backend actually returned a real PDF binary
       if (!contentType.includes('application/pdf')) {
-        let errorMsg = 'Backend PDF export is pending implementation by the backend developer.';
+        let errorMsg = 'Official binary PDF statement export is pending backend development by the backend developer.';
         try {
           const text = await res.data.text();
           const json = JSON.parse(text);
-          if (json.error || json.detail || json.message) {
+          if (json.statement_id) {
+            errorMsg = `Statement ${json.statement_id} verified on ledger. Binary PDF renderer is pending backend development.`;
+          } else if (json.error || json.detail || json.message) {
             errorMsg = json.error || json.detail || json.message;
           }
         } catch (e) {
           // not JSON text
         }
-        showToast(errorMsg, 'error');
+        showToast(errorMsg, 'info');
         return;
       }
 
@@ -965,7 +1085,7 @@ const OwnerDashboard = () => {
         { id: 'BOOKED_ROOMS', label: 'Guest Reservations', icon: CalendarCheck, badge: bookings.length },
         { id: 'ROOM_OCCUPANCY', label: 'Room Unit Status Matrix', icon: DoorClosed, badge: totalRooms },
         { id: 'REVIEWS', label: 'Guest Ratings & Reviews', icon: Star, badge: reviews.length },
-        { id: 'TICKETS', label: 'Support Tickets', icon: MessageSquare, badge: 'Support' },
+        { id: 'TICKETS', label: 'Support Tickets', icon: MessageSquare, badge: tickets.length },
       ]
     },
     {
@@ -984,6 +1104,27 @@ const OwnerDashboard = () => {
     setActiveTab(tabId);
     if (filter) {
       setSelectedHotelFilter(filter);
+    }
+    if (tabId === 'SETTING_NOTIFICATIONS') {
+      fetchOwnerNotifications();
+    }
+    if (tabId === 'SETTING_PAYOUT') {
+      fetchPayoutAccount();
+    }
+    if (tabId === 'SETTING_PROFILE') {
+      fetchOwnerProfile();
+    }
+    if (tabId === 'BOOKED_ROOMS') {
+      fetchOwnerBookings();
+    }
+    if (tabId === 'SETTLEMENTS') {
+      fetchSettlements();
+    }
+    if (tabId === 'REVIEWS') {
+      fetchOwnerReviews();
+    }
+    if (tabId === 'PROPERTIES' || tabId === 'ROOM_OCCUPANCY') {
+      fetchHotelsAndRooms();
     }
     const slug = TAB_TO_SLUG[tabId] || 'properties';
     navigate(`/owner/dashboard/${slug}`);
@@ -2895,15 +3036,27 @@ const OwnerDashboard = () => {
                     </h3>
                     <p className="text-xs text-slate-500 font-medium">Recent platform alerts, matured earnings, and payout disbursals</p>
                   </div>
-                  {ownerNotifications.some(n => !n.is_read) && (
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={handleMarkAllNotificationsRead}
-                      className="text-xs text-rose-600 hover:text-rose-700 font-bold cursor-pointer"
+                      onClick={fetchOwnerNotifications}
+                      disabled={loadingNotifications}
+                      className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                      title="Sync latest notifications"
                     >
-                      Mark all as read
+                      <RotateCcw className={`w-3.5 h-3.5 ${loadingNotifications ? 'animate-spin text-rose-600' : ''}`} />
+                      <span>Refresh</span>
                     </button>
-                  )}
+                    {ownerNotifications.some(n => !n.is_read) && (
+                      <button
+                        type="button"
+                        onClick={handleMarkAllNotificationsRead}
+                        className="text-xs text-rose-600 hover:text-rose-700 font-bold cursor-pointer"
+                      >
+                        Mark all as read
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Notifications History Feed */}
@@ -2921,23 +3074,34 @@ const OwnerDashboard = () => {
                       <div
                         key={n.id}
                         onClick={() => !n.is_read && handleMarkNotificationRead(n.id)}
-                        className={`p-4 rounded-2xl border transition-all ${
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer ${
                           !n.is_read
-                            ? 'bg-rose-50/40 border-rose-200 shadow-xs'
+                            ? 'bg-rose-50/40 border-rose-200 shadow-xs hover:bg-rose-50'
                             : 'bg-white border-slate-200/80 hover:bg-slate-50'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
-                              <span className={`w-2 h-2 rounded-full shrink-0 ${!n.is_read ? 'bg-rose-600' : 'bg-transparent'}`} />
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${!n.is_read ? 'bg-rose-600 animate-pulse' : 'bg-transparent'}`} />
                               <h4 className="text-xs font-black text-slate-900">{n.title}</h4>
                             </div>
                             <p className="text-xs text-slate-600 pl-4 leading-relaxed font-medium">{n.message}</p>
                           </div>
-                          <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
-                            {new Date(n.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                          </span>
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <span className="text-[10px] font-mono font-bold text-slate-400">
+                              {new Date(n.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                            </span>
+                            {!n.is_read && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleMarkNotificationRead(n.id, e)}
+                                className="text-[10px] font-black text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                              >
+                                Mark Read
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))
