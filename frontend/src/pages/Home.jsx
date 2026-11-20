@@ -382,17 +382,16 @@ const Home = () => {
 
       {/* HERO SECTION WITH STAYLURE-STYLE HEADLINE, CAPSULE SEARCH & REAL HOTEL PHOTO MOSAIC */}
       <section className="relative z-30 pt-8 pb-14 sm:pt-12 sm:pb-16 bg-gradient-to-b from-[#d5e7f5] via-[#e2eef7] to-[#eaf3f9] border-b border-sky-100/70">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
 
             {/* Left Column: Heading, Subtitle, Search Capsule, Recently Viewed */}
             <div className="lg:col-span-7 space-y-5 text-left">
               <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-black text-slate-900 tracking-tight leading-[1.12]">
-                Discover Stays<br />
-                Tailored Just For You
+                {t('hero_title')}
               </h1>
               <p className="text-sm sm:text-base text-slate-600 font-medium max-w-lg leading-relaxed">
-                Discover Handpicked Hotels, Resorts, And Home-Stays That Match Your Mood, Budget, And Location.
+                {t('hero_subtitle')}
               </p>
 
               {/* RECENTLY VIEWED HOTELS / RECENT SEARCHES BUTTON & POPUP */}
@@ -411,7 +410,7 @@ const Home = () => {
                 >
                   <Clock className="w-3.5 h-3.5 text-[#207a72] group-hover:rotate-12 transition-transform" />
                   <span>
-                    Recently Viewed Hotels {recentlyViewed && recentlyViewed.length > 0 ? `(${recentlyViewed.length})` : ''}
+                    {t('recently_viewed')} {recentlyViewed && recentlyViewed.length > 0 ? `(${recentlyViewed.length})` : ''}
                   </span>
                   <ChevronDown className={`w-3.5 h-3.5 text-slate-400 group-hover:text-[#207a72] transition-transform duration-200 ${showRecentPopover ? 'rotate-180' : ''}`} />
                 </button>
@@ -428,7 +427,7 @@ const Home = () => {
                           <Clock className="w-4 h-4" />
                         </div>
                         <div>
-                          <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Recently Viewed Stays</h4>
+                          <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{t('recently_viewed')}</h4>
                           <p className="text-[10px] text-slate-400 font-bold">Pick up right where you left off</p>
                         </div>
                       </div>
@@ -448,7 +447,7 @@ const Home = () => {
                             className="text-xs font-black text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 transition-all cursor-pointer px-2.5 py-1 rounded-lg active:scale-95 shadow-2xs shrink-0"
                             title="Clear all recent history"
                           >
-                            Clear All
+                            {t('clear_all')}
                           </button>
                         )}
                         <button
@@ -631,7 +630,7 @@ const Home = () => {
       {popularCities.length > 0 && (
         <section className="relative z-10 py-12 bg-[#eaf3f9]/80 border-b border-sky-100">
 
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          <div className="max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
               <div>
                 <h2 className="text-2xl sm:text-3xl font-black text-slate-900 flex items-center gap-2">
@@ -643,7 +642,7 @@ const Home = () => {
           </div>
 
           {/* 1-Second Automatic Stepping Card Container */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8">
             <div
               ref={cityScrollRef}
               onMouseEnter={() => setIsPaused(true)}
@@ -696,7 +695,7 @@ const Home = () => {
       )}
 
       {/* FEATURED HOTELS & VILLAS SECTION - SEPARATED BY CITY ROWS */}
-      <section className="py-14 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+      <section className="py-14 max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
 
         {/* TOP CATEGORY SWITCHER TABS: [Hotels] | [Villas & Homestays] */}
         <div className="bg-[#eaf3f9] rounded-2xl border border-sky-200/80 shadow-xs px-4 pt-3 pb-1">
@@ -716,10 +715,10 @@ const Home = () => {
           <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
             <div>
               <h2 className="text-2xl sm:text-3xl font-black text-slate-900">
-                {selectedCategory === 'VILLAS' ? 'Featured Villa & Homestay Stays' : 'Featured Hotel Stays'}
+                {selectedCategory === 'VILLAS' ? t('handpicked_luxury') : t('featured_stays')}
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Explore luxury properties separated by destination cities
+                {t('explore_top_cities')}
               </p>
             </div>
 
@@ -727,7 +726,7 @@ const Home = () => {
               onClick={() => navigate(selectedCategory === 'VILLAS' ? '/search?property_type=VILLA,HOMESTAY' : '/search?property_type=HOTEL,RESORT')}
               className="text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 bg-rose-50 px-3.5 py-1.5 rounded-xl border border-rose-200 transition-all hover:bg-rose-100"
             >
-              Explore All Cities <ArrowRight className="w-3.5 h-3.5" />
+              {t('view_all_hotels')} <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -742,7 +741,7 @@ const Home = () => {
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
                   }`}
               >
-                {cityName === 'ALL' ? 'All City Rows' : cityName}
+                {cityName === 'ALL' ? t('all') : cityName}
               </button>
             ))}
           </div>
@@ -970,12 +969,12 @@ const Home = () => {
 
                             <div className="flex items-center justify-between pt-2.5 border-t border-slate-100">
                               <div>
-                                <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">Price From</span>
+                                <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">{t('price_from')}</span>
                                 <span className="text-base font-black text-rose-600">₹{(hotel.starting_price || 2500).toLocaleString()}</span>
-                                <span className="text-[10px] text-slate-500"> / night</span>
+                                <span className="text-[10px] text-slate-500"> / {t('night')}</span>
                               </div>
                               <button className="btn-rose py-1.5 px-3.5 text-[11px] font-extrabold rounded-xl shadow-xs">
-                                View Stay
+                                {t('view_stay')}
                               </button>
                             </div>
                           </div>

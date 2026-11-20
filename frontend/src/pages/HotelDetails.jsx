@@ -8,6 +8,7 @@ import {
 import api from '../services/api';
 import { hotelService, reviewService, wishlistService } from '../services';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const getRatingLabel = (rating) => {
   const num = parseFloat(rating);
@@ -24,6 +25,7 @@ const HotelDetails = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { showToast, user } = useAuth();
+  const { t } = useLanguage();
 
   const [hotel, setHotel] = useState(null);
   const [rooms, setRooms] = useState([]);
@@ -322,17 +324,17 @@ const HotelDetails = () => {
   }
 
   return (
-    <div className="bg-[#eaf3f9] text-slate-900 min-h-screen pb-16 overflow-x-hidden">
+    <div className="bg-[#eaf3f9] text-slate-900 min-h-screen pb-16 overflow-x-clip">
 
       {/* Top Breadcrumb Header */}
       <div className="bg-[#d5e7f5]/80 backdrop-blur-md border-b border-sky-200/60 py-3 sm:py-4 px-3 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+        <div className="max-w-[1480px] mx-auto flex items-center justify-between gap-3">
           <button
             onClick={() => navigate(-1)}
             className="text-xs font-extrabold text-slate-600 hover:text-teal-600 flex items-center gap-1.5 shrink-0"
           >
             <ArrowLeft className="w-4 h-4 text-teal-600 shrink-0" />
-            <span className="hidden sm:inline">Back to Search Results</span>
+            <span className="hidden sm:inline">{t('back_to_search')}</span>
             <span className="sm:hidden font-extrabold">Back</span>
           </button>
 
@@ -356,14 +358,14 @@ const HotelDetails = () => {
                 }`}
             >
               <Heart className={`w-3.5 h-3.5 ${isSavedWishlist ? 'fill-rose-600 text-rose-600' : ''}`} />
-              <span className="hidden sm:inline">{isSavedWishlist ? 'Saved in Wishlist' : 'Save to Wishlist'}</span>
+              <span className="hidden sm:inline">{isSavedWishlist ? t('saved_in_wishlist') : t('save_to_wishlist')}</span>
               <span className="sm:hidden">{isSavedWishlist ? 'Saved' : 'Save'}</span>
             </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 space-y-6 sm:space-y-8">
+      <div className="max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 space-y-6 sm:space-y-8">
 
         {/* Hotel Main Header Title */}
         <div className="space-y-2">
@@ -412,7 +414,7 @@ const HotelDetails = () => {
               {hotelImages.length > 0 && (
                 <div className="absolute bottom-4 left-4 bg-slate-900/85 backdrop-blur-md text-white px-3.5 py-1.5 rounded-xl text-xs font-black border border-white/20 shadow-md flex items-center gap-1.5">
                   <Camera className="w-3.5 h-3.5 text-teal-400" />
-                  <span>Photo {activeHotelImgIndex >= 0 ? activeHotelImgIndex + 1 : 1} of {hotelImages.length}</span>
+                  <span>{t('photo')} {activeHotelImgIndex >= 0 ? activeHotelImgIndex + 1 : 1} {t('of')} {hotelImages.length}</span>
                 </div>
               )}
 
@@ -481,7 +483,7 @@ const HotelDetails = () => {
               }}
             >
               <label htmlFor="hotel_details_checkin" className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1 cursor-pointer">
-                <Calendar className="w-3.5 h-3.5 text-teal-600" /> Check-in Date
+                <Calendar className="w-3.5 h-3.5 text-teal-600" /> {t('check_in')}
               </label>
               <input
                 id="hotel_details_checkin"
@@ -510,7 +512,7 @@ const HotelDetails = () => {
               }}
             >
               <label htmlFor="hotel_details_checkout" className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1 cursor-pointer">
-                <Calendar className="w-3.5 h-3.5 text-teal-600" /> Check-out Date
+                <Calendar className="w-3.5 h-3.5 text-teal-600" /> {t('check_out')}
               </label>
               <input
                 id="hotel_details_checkout"
@@ -532,7 +534,7 @@ const HotelDetails = () => {
             <div className="sm:col-span-4 flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
               <div className="flex-1">
                 <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1">
-                  <Users className="w-3.5 h-3.5 text-teal-600" /> Rooms
+                  <Users className="w-3.5 h-3.5 text-teal-600" /> {t('rooms')}
                 </label>
                 <select
                   value={selectedRooms}
@@ -546,7 +548,7 @@ const HotelDetails = () => {
               </div>
 
               <button type="submit" className="btn-teal w-full sm:w-auto py-2.5 px-5 text-xs font-extrabold uppercase justify-center text-center">
-                Check Dates
+                {t('check_dates')}
               </button>
             </div>
 
@@ -558,15 +560,6 @@ const HotelDetails = () => {
 
           {/* Main Column: Available Rooms */}
           <div className="lg:col-span-8 space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
-              <h2 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2">
-                <BedDouble className="w-5 h-5 text-teal-600 shrink-0" /> Available Rooms for Your Dates
-              </h2>
-              <span className="text-[10px] sm:text-xs font-extrabold text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200 shrink-0">
-                100% Real-Time Inventory Checked
-              </span>
-            </div>
-
             {roomsLoading ? (
               <div className="text-center py-12 card-white">
                 <div className="w-8 h-8 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
@@ -575,9 +568,9 @@ const HotelDetails = () => {
             ) : rooms.length === 0 ? (
               <div className="card-white p-8 text-center space-y-3">
                 <BedDouble className="w-10 h-10 text-teal-600 mx-auto opacity-50" />
-                <h3 className="text-base font-black text-slate-900">No Rooms Available For Selected Dates</h3>
+                <h3 className="text-base font-black text-slate-900">{t('no_rooms_available')}</h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  All rooms at this property are fully booked for {checkIn} → {checkOut}. Please try selecting alternative travel dates above.
+                  {t('no_rooms_desc')}
                 </p>
               </div>
             ) : (
@@ -633,13 +626,13 @@ const HotelDetails = () => {
                           <div className="flex flex-wrap items-center gap-2 text-xs">
                             {room.breakfast_included && (
                               <span className="inline-flex items-center gap-1 text-teal-800 font-bold bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200 text-[11px]">
-                                <Utensils className="w-3 h-3" /> Breakfast Included
+                                <Utensils className="w-3 h-3" /> {t('breakfast_included')}
                               </span>
                             )}
 
                             {room.free_cancellation && (
                               <span className="inline-flex items-center gap-1 text-cyan-800 font-bold bg-cyan-50 px-2 py-0.5 rounded-md border border-cyan-200 text-[11px]">
-                                <CheckCircle2 className="w-3 h-3" /> Free Cancellation
+                                <CheckCircle2 className="w-3 h-3" /> {t('free_cancellation')}
                               </span>
                             )}
 
@@ -661,19 +654,19 @@ const HotelDetails = () => {
                           <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
                             <div>
                               <div className="text-lg font-black text-teal-600">₹{room.price_per_night}</div>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase">Per Night + Taxes</p>
+                              <p className="text-[9px] text-slate-400 font-bold uppercase">{t('per_night_taxes')}</p>
                             </div>
 
                             {user && user.role !== 'CUSTOMER' ? (
                               <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-                                Customer Role Needed
+                                {t('customer_role_needed')}
                               </span>
                             ) : (
                               <button
                                 onClick={() => handleBookRoom(room.id, room.title, room.price_per_night)}
                                 className="btn-teal py-2 px-5 text-xs uppercase tracking-wider font-extrabold shadow-md shadow-teal-600/20 cursor-pointer"
                               >
-                                Book Room
+                                {t('book_room')}
                               </button>
                             )}
                           </div>
@@ -693,9 +686,9 @@ const HotelDetails = () => {
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div>
                   <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <Star className="w-5 h-5 fill-amber-400 text-amber-400" /> Guest Ratings & Reviews
+                    <Star className="w-5 h-5 fill-amber-400 text-amber-400" /> {t('guest_ratings_reviews')}
                   </h3>
-                  <p className="text-xs text-slate-500 font-medium">Real-time ratings from verified guests</p>
+                  <p className="text-xs text-slate-500 font-medium">{t('real_time_ratings')}</p>
                 </div>
 
                 <div className="flex items-center gap-3 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-sm">
@@ -710,7 +703,7 @@ const HotelDetails = () => {
                       {hotel.reviews_count > 0 ? getRatingLabel(hotel.guest_rating) : 'Newly Listed'}
                     </span>
                     <span className="text-[10px] text-slate-400 font-medium block">
-                      {hotel.reviews_count || 0} verified {hotel.reviews_count === 1 ? 'review' : 'reviews'}
+                      {hotel.reviews_count || 0} {t('verified_reviews')}
                     </span>
                   </div>
                 </div>
@@ -718,7 +711,7 @@ const HotelDetails = () => {
 
               {reviews.length === 0 ? (
                 <div className="text-center py-6 text-xs text-slate-500 font-semibold">
-                  No guest reviews submitted yet for this hotel stay.
+                  {t('no_reviews_yet')}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -757,57 +750,59 @@ const HotelDetails = () => {
 
           </div>
 
-          {/* Right Column: Hotel Amenities & Policies */}
-          <div className="lg:col-span-4 space-y-6">
+          {/* Right Column: Hotel Amenities & Policies (Sticky alongside room selection) */}
+          <div className="lg:col-span-4 relative">
+            <div className="lg:sticky lg:top-24 space-y-6 max-h-[calc(100vh-110px)] overflow-y-auto no-scrollbar">
 
-            {/* Amenities Card */}
-            <div className="card-white p-6 space-y-4 border border-slate-200 shadow-xs">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3">
-                Hotel Amenities
-              </h3>
-              <div className="space-y-2.5">
-                {(hotel.amenities || []).map((a) => (
-                  <div key={a.id} className="flex items-center gap-2.5 text-xs font-bold text-slate-700">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
-                    <span>{a.name}</span>
+              {/* Amenities Card */}
+              <div className="card-white p-6 space-y-4 border border-slate-200 shadow-xs">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3">
+                  {t('hotel_amenities')}
+                </h3>
+                <div className="space-y-2.5">
+                  {(hotel.amenities || []).map((a) => (
+                    <div key={a.id} className="flex items-center gap-2.5 text-xs font-bold text-slate-700">
+                      <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+                      <span>{a.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Hotel Policies Card */}
+              <div className="card-white p-6 space-y-4 border border-slate-200 shadow-xs">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3">
+                  {t('hotel_policies')}
+                </h3>
+
+                <div className="space-y-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-bold flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-teal-600" /> {t('check_in_time')}
+                    </span>
+                    <span className="font-black text-slate-900">{hotel.check_in_time}</span>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            {/* Hotel Policies Card */}
-            <div className="card-white p-6 space-y-4 border border-slate-200 shadow-xs">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3">
-                Hotel Policies & Timings
-              </h3>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-bold flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-teal-600" /> {t('check_out_time')}
+                    </span>
+                    <span className="font-black text-slate-900">{hotel.check_out_time}</span>
+                  </div>
 
-              <div className="space-y-3 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-bold flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-teal-600" /> Check-in Time:
-                  </span>
-                  <span className="font-black text-slate-900">{hotel.check_in_time}</span>
-                </div>
+                  <div className="pt-2 border-t border-slate-100">
+                    <span className="text-slate-500 font-bold block mb-1">{t('house_rules')}</span>
+                    <p className="text-slate-600 leading-relaxed font-semibold">{hotel.rules}</p>
+                  </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-bold flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-teal-600" /> Check-out Time:
-                  </span>
-                  <span className="font-black text-slate-900">{hotel.check_out_time}</span>
-                </div>
-
-                <div className="pt-2 border-t border-slate-100">
-                  <span className="text-slate-500 font-bold block mb-1">House Rules:</span>
-                  <p className="text-slate-600 leading-relaxed font-semibold">{hotel.rules}</p>
-                </div>
-
-                <div className="pt-2 border-t border-slate-100">
-                  <span className="text-slate-500 font-bold block mb-1">Cancellation Policy:</span>
-                  <p className="text-slate-600 leading-relaxed font-semibold">{hotel.cancellation_policy}</p>
+                  <div className="pt-2 border-t border-slate-100">
+                    <span className="text-slate-500 font-bold block mb-1">{t('cancellation_policy')}</span>
+                    <p className="text-slate-600 leading-relaxed font-semibold">{hotel.cancellation_policy}</p>
+                  </div>
                 </div>
               </div>
-            </div>
 
+            </div>
           </div>
 
         </div>

@@ -2,11 +2,12 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
+import { StaffDepartmentProvider } from './context/StaffDepartmentContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Toast from './components/Toast';
 import ProtectedRoute from './components/ProtectedRoute';
-import { CustomerRoute, OwnerRoute, AdminRoute, StaffRoute } from './routes';
+import { CustomerRoute, OwnerRoute, AdminRoute, StaffRoute, DepartmentRouteGuard } from './routes';
 
 import ScrollToTop from './components/ScrollToTop';
 
@@ -33,6 +34,11 @@ import AddEditRoom from './pages/owner/AddEditRoom';
 // Admin & Staff & Support Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
 import StaffDashboard from './pages/staff/StaffDashboard';
+import ReservationPortal from './pages/staff/departments/ReservationPortal';
+import CustomerSupportPortal from './pages/staff/departments/CustomerSupportPortal';
+import RefundsClaimsPortal from './pages/staff/departments/RefundsClaimsPortal';
+import PayoutsEscrowPortal from './pages/staff/departments/PayoutsEscrowPortal';
+import HotelVerificationPortal from './pages/staff/departments/HotelVerificationPortal';
 import SupportTickets from './pages/SupportTickets';
 
 import BecomeHost from './pages/BecomeHost';
@@ -45,11 +51,12 @@ const App = () => {
     <AuthProvider>
       <LanguageProvider>
         <Router>
-          <ScrollToTop />
-          <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-rose-600 selection:text-white">
-          <Navbar />
-          <main className="flex-grow">
-            <Routes>
+          <StaffDepartmentProvider>
+            <ScrollToTop />
+            <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-rose-600 selection:text-white">
+            <Navbar />
+            <main className="flex-grow">
+              <Routes>
               {/* Public Routes */}
               <Route path="/" element={<Home />} />
               <Route path="/about" element={<AboutUs />} />
@@ -172,13 +179,61 @@ const App = () => {
                 }
               />
 
-              {/* Staff Desk Routes */}
+              {/* Strict Department-Isolated Staff Portals */}
+              <Route
+                path="/staff"
+                element={
+                  <StaffRoute>
+                    <StaffDashboard />
+                  </StaffRoute>
+                }
+              />
               <Route
                 path="/staff/dashboard"
                 element={
                   <StaffRoute>
                     <StaffDashboard />
                   </StaffRoute>
+                }
+              />
+              <Route
+                path="/staff/reservation"
+                element={
+                  <DepartmentRouteGuard targetDepartment="RESERVATION">
+                    <ReservationPortal />
+                  </DepartmentRouteGuard>
+                }
+              />
+              <Route
+                path="/staff/support"
+                element={
+                  <DepartmentRouteGuard targetDepartment="CUSTOMER_SUPPORT">
+                    <CustomerSupportPortal />
+                  </DepartmentRouteGuard>
+                }
+              />
+              <Route
+                path="/staff/refunds"
+                element={
+                  <DepartmentRouteGuard targetDepartment="REFUNDS_AND_CLAIMS">
+                    <RefundsClaimsPortal />
+                  </DepartmentRouteGuard>
+                }
+              />
+              <Route
+                path="/staff/payouts"
+                element={
+                  <DepartmentRouteGuard targetDepartment="PAYOUT_AND_ESCROW">
+                    <PayoutsEscrowPortal />
+                  </DepartmentRouteGuard>
+                }
+              />
+              <Route
+                path="/staff/verification"
+                element={
+                  <DepartmentRouteGuard targetDepartment="HOTEL_VERIFICATION">
+                    <HotelVerificationPortal />
+                  </DepartmentRouteGuard>
                 }
               />
 
@@ -209,6 +264,7 @@ const App = () => {
           <Footer />
           <Toast />
         </div>
+        </StaffDepartmentProvider>
       </Router>
     </LanguageProvider>
   </AuthProvider>

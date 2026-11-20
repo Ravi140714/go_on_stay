@@ -127,4 +127,40 @@ export const ENDPOINTS = {
     TICKET_MESSAGES: (id) => `/payments/support-tickets/${id}/messages/`,
     CHAT: (bookingId) => `/payments/chat/${bookingId}/`,
   },
+
+  // Staff Authentication & Profile Management
+  STAFF: {
+    LOGIN: '/staff/login/',
+    ME: '/staff/me/',
+    CHANGE_PASSWORD: '/staff/change-password/',
+    FORGOT_PASSWORD: '/staff/forgot-password/',
+    RESET_PASSWORD: '/staff/reset-password/',
+    LOGOUT: '/staff/logout/',
+  },
+
+  // Staff Department Operations
+  STAFF_OPS: {
+    DASHBOARD: '/staff/dashboard/',
+    BOOKINGS: '/staff/bookings/',
+    BOOKING_DETAIL: (id) => `/staff/bookings/${id}/`,
+    REFUNDS: '/staff/refunds/',
+    REFUND_DETAIL: (id) => `/staff/refunds/${id}/`,
+    PROCESS_REFUND: (id) => `/staff/refunds/${id}/process/`,
+    REFUNDS_HISTORY: '/staff/refunds/history/',
+    PAYOUTS: '/staff/payouts/',
+    PAYOUT_DETAIL: (id) => `/staff/payouts/${id}/`,
+    PROCESS_PAYOUT: (id) => `/staff/payouts/${id}/process/`,
+    PAYOUTS_HISTORY: '/staff/payouts/history/',
+    SUPPORT: '/staff/support/',
+    SUPPORT_DETAIL: (id) => `/staff/support/${id}/`,
+    UPDATE_SUPPORT: (id) => `/staff/support/${id}/update/`,
+    ADD_SUPPORT_NOTE: (id) => `/staff/support/${id}/notes/`,
+    VERIFICATIONS: '/staff/verifications/',
+    VERIFICATION_DETAIL: (id) => `/staff/verifications/${id}/`,
+    APPROVE_VERIFICATION: (id) => `/staff/verifications/${id}/approve/`,
+    REJECT_VERIFICATION: (id) => `/staff/verifications/${id}/reject/`,
+    NOTIFICATIONS: '/staff/notifications/',
+    MARK_NOTIFICATION_READ: (id) => `/staff/notifications/${id}/read/`,
+    MARK_ALL_NOTIFICATIONS_READ: '/staff/notifications/read-all/',
+  },
 };

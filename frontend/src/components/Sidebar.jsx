@@ -5,6 +5,7 @@ import {
   LayoutDashboard, Hotel, HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 
 /**
  * Professional Widescreen Sidebar Navigation
@@ -23,6 +24,7 @@ const Sidebar = ({
   setMobileOpen = () => {}
 }) => {
   const { user, logout } = useAuth();
+  const { t } = useLanguage();
   const location = useLocation();
   const [expandedGroups, setExpandedGroups] = useState(() => {
     const initial = {};
@@ -83,7 +85,7 @@ const Sidebar = ({
                 : 'text-slate-900 group-hover:text-sky-700'
             }`}
           >
-            {title}
+            {t(title)}
           </h2>
           {badgeText && (
             <div className="mt-1 flex items-center">
@@ -131,7 +133,7 @@ const Sidebar = ({
                     {group.icon && (
                       <group.icon className={`w-3 h-3 ${isLuxury ? 'text-[#D4AF37]' : 'text-sky-600'}`} />
                     )}
-                    {group.title}
+                    {t(group.title)}
                   </span>
                   <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''} ${isLuxury ? 'text-[#D4AF37]' : 'text-slate-400'}`} />
                 </button>
@@ -167,22 +169,10 @@ const Sidebar = ({
                                 ? isLuxury ? 'text-white' : 'text-white'
                                 : isLuxury ? 'text-slate-400 group-hover:text-white' : 'text-[#475569] group-hover:text-[#0F172A]'
                             }`} />
-                            <span className="truncate text-left">{item.label}</span>
+                            <span className="truncate text-left">{t(item.label)}</span>
                           </div>
 
-                          {!isLuxury && item.badge !== undefined && item.badge !== null && (
-                            <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              isActive
-                                ? isLuxury
-                                  ? 'bg-gradient-to-r from-[#D4AF37] to-[#C5A880] text-slate-950 font-black shadow-xs'
-                                  : 'bg-white/20 text-white font-black'
-                                : isLuxury
-                                ? 'bg-slate-800/90 text-slate-300 border border-slate-700/60'
-                                : 'bg-slate-100 text-[#475569]'
-                            }`}>
-                              {item.badge}
-                            </span>
-                          )}
+
                         </button>
 
                         {/* Nested Sub-Menu List */}
@@ -214,15 +204,9 @@ const Sidebar = ({
                                         ? isLuxury ? 'text-[#D4AF37]' : 'text-white'
                                         : 'text-[#475569]'
                                     }`} />
-                                    <span className="truncate text-left">{sub.label}</span>
+                                    <span className="truncate text-left">{t(sub.label)}</span>
                                   </div>
-                                  {!isLuxury && sub.badge !== undefined && sub.badge !== null && (
-                                    <span className={`shrink-0 text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                                      isLuxury ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-slate-100 text-[#475569]'
-                                    }`}>
-                                      {sub.badge}
-                                    </span>
-                                  )}
+
                                 </button>
                               );
                             })}
@@ -276,7 +260,7 @@ const Sidebar = ({
                 ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-950/40'
                 : 'text-slate-400 hover:text-sky-700 hover:bg-sky-50'
             }`}
-            title="Log out"
+            title={t('logout')}
           >
             <LogOut className="w-4 h-4" />
           </button>

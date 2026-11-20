@@ -1,9 +1,11 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Hotel, Mail, Phone, MapPin, ShieldCheck, Heart, Sparkles, ArrowUpRight } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 
 const Footer = () => {
   const location = useLocation();
+  const { t } = useLanguage();
 
   // Show footer strictly on Home page ('/') only
   if (location.pathname !== '/') {
@@ -16,7 +18,7 @@ const Footer = () => {
       <div className="absolute -top-24 left-1/4 w-96 h-96 bg-rose-600/15 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute -bottom-24 right-1/4 w-96 h-96 bg-teal-500/15 rounded-full blur-3xl pointer-events-none"></div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <div className="max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10 pb-12 border-b border-white/10">
           
           {/* Brand Info */}
@@ -48,31 +50,31 @@ const Footer = () => {
           {/* Quick Links */}
           <div>
             <h4 className="text-xs font-black text-white uppercase tracking-widest mb-4 flex items-center gap-1.5">
-              <span>Quick Links</span>
+              <span>{t('quick_links')}</span>
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
             </h4>
             <ul className="space-y-2.5 text-xs font-semibold">
               <li>
                 <Link to="/search" className="hover:text-rose-400 transition-colors flex items-center gap-1 group">
-                  <span>Search Hotels</span>
+                  <span>{t('find_rooms')}</span>
                   <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               </li>
               <li>
                 <Link to="/offers" className="hover:text-rose-400 transition-colors flex items-center gap-1 group">
-                  <span>Special Offers & Deals</span>
+                  <span>{t('available_offers')}</span>
                   <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               </li>
               <li>
                 <Link to="/about" className="hover:text-rose-400 transition-colors flex items-center gap-1 group">
-                  <span>About GoOnStay</span>
+                  <span>{t('about')}</span>
                   <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               </li>
               <li>
                 <Link to="/support/tickets" className="hover:text-rose-400 transition-colors flex items-center gap-1 group">
-                  <span>Contact Support</span>
+                  <span>{t('help_support')}</span>
                   <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               </li>
@@ -82,31 +84,31 @@ const Footer = () => {
           {/* For Hotel Owners */}
           <div>
             <h4 className="text-xs font-black text-white uppercase tracking-widest mb-4 flex items-center gap-1.5">
-              <span>For Hotel Owners</span>
+              <span>{t('partner_with_us')}</span>
               <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
             </h4>
             <ul className="space-y-2.5 text-xs font-semibold">
               <li>
                 <Link to="/become-host" className="hover:text-teal-400 transition-colors flex items-center gap-1 group">
-                  <span>List Your Hotel Property</span>
+                  <span>{t('become_host_list')}</span>
                   <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               </li>
               <li>
                 <Link to="/login" className="hover:text-teal-400 transition-colors flex items-center gap-1 group">
-                  <span>Owner Portal Sign In</span>
+                  <span>{t('owner_portal')}</span>
                   <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               </li>
               <li>
                 <Link to="/partner-benefits" className="hover:text-teal-400 transition-colors flex items-center gap-1 group">
-                  <span>Partner Benefits & Revenue Share</span>
+                  <span>{t('partner_benefits')}</span>
                   <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               </li>
               <li>
                 <Link to="/real-time-inventory" className="hover:text-teal-400 transition-colors flex items-center gap-1 group">
-                  <span>Real-Time Inventory Management</span>
+                  <span>Real-Time Inventory</span>
                   <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               </li>
@@ -139,7 +141,7 @@ const Footer = () => {
 
         {/* Footer Bottom */}
         <div className="pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-400 font-medium">
-          <p>© 2026 GoOnStay Platform. All rights reserved. Independent Hotel Booking System.</p>
+          <p>© 2026 GoOnStay Platform. {t('all_rights_reserved')}</p>
           <div className="flex items-center gap-2 font-semibold">
             <span>Crafted with</span>
             <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500 animate-pulse" />

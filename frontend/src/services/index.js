@@ -6,6 +6,8 @@ export { default as apiClient, normalizeError } from './apiClient';
 
 // Common Services
 export { authService } from './common/authService';
+export { staffAuthService } from './common/staffAuthService';
+export { staffOperationsService } from './common/staffOperationsService';
 export { profileService } from './common/profileService';
 export { notificationService } from './common/notificationService';
 export { supportService } from './common/supportService';

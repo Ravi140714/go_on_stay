@@ -245,7 +245,7 @@ const InteractiveSearchBar = ({
         >
           <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
           <span className="text-xs sm:text-sm truncate">
-            {destination || 'Location'}
+            {destination || t('location')}
           </span>
           <ChevronDown className={`w-3 h-3 text-slate-400 shrink-0 ml-auto transition-transform ${activeTab === 'where' ? 'rotate-180 text-[#207a72]' : ''}`} />
         </div>
@@ -263,7 +263,7 @@ const InteractiveSearchBar = ({
         >
           <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
           <span className="text-xs sm:text-sm truncate">
-            {checkIn && checkOut ? `${checkIn.slice(5)} - ${checkOut.slice(5)}` : 'Check in - Check out'}
+            {checkIn && checkOut ? `${checkIn.slice(5)} - ${checkOut.slice(5)}` : `${t('check_in')} - ${t('check_out')}`}
           </span>
           <ChevronDown className={`w-3 h-3 text-slate-400 shrink-0 ml-auto transition-transform ${activeTab === 'when' ? 'rotate-180 text-[#207a72]' : ''}`} />
         </div>
@@ -281,7 +281,7 @@ const InteractiveSearchBar = ({
         >
           <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
           <span className="text-xs sm:text-sm truncate">
-            {adults + children > 0 ? `${adults + children} Person` : 'Person'}
+            {adults + children > 0 ? `${adults + children} ${t('person')}` : t('person')}
           </span>
           <ChevronDown className={`w-3 h-3 text-slate-400 shrink-0 ml-auto transition-transform ${activeTab === 'who' ? 'rotate-180 text-[#207a72]' : ''}`} />
         </div>
@@ -315,9 +315,9 @@ const InteractiveSearchBar = ({
           type="button"
           onClick={handleSearchSubmit}
           className="rounded-full bg-[#0284C7] hover:bg-[#0369A1] text-white flex items-center justify-center font-bold px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm shadow-[0_4px_12px_rgba(2,132,199,0.25)] hover:shadow-lg active:scale-95 transition-all shrink-0 ml-1 cursor-pointer"
-          title="Find Rooms"
+          title={t('find_rooms')}
         >
-          <span>Find Rooms</span>
+          <span>{t('find_rooms')}</span>
         </button>
 
       </div>

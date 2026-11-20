@@ -8,6 +8,7 @@ import {
 import api from '../services/api';
 import { bookingService, reviewService } from '../services';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { formatDisplayDate } from '../utils/dateUtils';
 import Pagination from '../components/Pagination';
 
@@ -67,6 +68,7 @@ const getOwnerApproval = (bookingOrId) => {
 
 const MyBookings = () => {
   const { user, showToast } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
 
   const [bookings, setBookings] = useState([]);
@@ -230,8 +232,8 @@ const MyBookings = () => {
         
         {/* Header */}
         <div className="border-b border-slate-200 pb-6">
-          <h1 className="text-3xl font-black text-slate-900">My Trips & Reservations</h1>
-          <p className="text-xs text-slate-500 font-semibold">View upcoming stays, rate completed trips, download receipts, or manage active bookings</p>
+          <h1 className="text-3xl font-black text-slate-900">{t('my_bookings_title')}</h1>
+          <p className="text-xs text-slate-500 font-semibold">{t('my_bookings_subtitle')}</p>
         </div>
 
         {/* Status Tabs */}
@@ -246,7 +248,10 @@ const MyBookings = () => {
                   : 'bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#0F172A] hover:bg-[#F8FAFC]'
               }`}
             >
-              {tab === 'ALL' ? 'All Reservations' : tab}
+              {tab === 'ALL' ? t('all') :
+               tab === 'CONFIRMED' ? t('status_confirmed') :
+               tab === 'COMPLETED' ? t('status_completed') :
+               t('status_cancelled')}
             </button>
           ))}
         </div>
@@ -260,12 +265,12 @@ const MyBookings = () => {
         ) : filteredBookings.length === 0 ? (
           <div className="card-white p-12 text-center space-y-4">
             <Calendar className="w-12 h-12 text-teal-600 mx-auto opacity-50" />
-            <h3 className="text-lg font-black text-slate-900">No Reservations Found</h3>
+            <h3 className="text-lg font-black text-slate-900">{t('no_bookings_found')}</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              You don't have any {activeTab !== 'ALL' ? activeTab.toLowerCase() : ''} room reservations yet.
+              {t('no_bookings_desc')}
             </p>
             <Link to="/search" className="btn-teal py-2.5 px-6 text-xs font-extrabold inline-flex">
-              Explore Hotels & Book
+              {t('browse_rooms')}
             </Link>
           </div>
         ) : (
@@ -565,7 +570,7 @@ const MyBookings = () => {
                           onClick={() => handleOpenCancelModal(b)}
                           className="px-4 py-2 rounded-full border border-red-200 text-red-600 font-extrabold hover:bg-red-50 hover:border-red-400 transition-colors cursor-pointer"
                         >
-                          Cancel Stay
+                          {t('cancel_booking')}
                         </button>
                       )}
                     </div>

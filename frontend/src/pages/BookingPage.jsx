@@ -7,6 +7,7 @@ import {
 import api from '../services/api';
 import { hotelService, roomService, bookingService, couponService } from '../services';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { formatDisplayDate } from '../utils/dateUtils';
 import { parseApiError } from '../utils/errorHandler';
 import FieldError from '../components/FieldError';
@@ -15,6 +16,7 @@ const BookingPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, showToast } = useAuth();
+  const { t } = useLanguage();
 
   const getTodayStr = () => {
     const d = new Date();
@@ -75,6 +77,7 @@ const BookingPage = () => {
   const [availableCoupons, setAvailableCoupons] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
 
+  const leftContainerRef = useRef(null);
   const rightContainerRef = useRef(null);
   const [fixedStyle, setFixedStyle] = useState({});
 
@@ -82,9 +85,18 @@ const BookingPage = () => {
     const updatePosition = () => {
       if (rightContainerRef.current && window.innerWidth >= 1024) {
         const rect = rightContainerRef.current.getBoundingClientRect();
+        // Dynamically align top to be exactly parallel with Stay Summary in leftContainerRef
+        let topPx = 112;
+        if (leftContainerRef.current) {
+          const leftRect = leftContainerRef.current.getBoundingClientRect();
+          const computedTop = Math.round(leftRect.top + window.scrollY);
+          if (computedTop > 0) {
+            topPx = computedTop;
+          }
+        }
         setFixedStyle({
           position: 'fixed',
-          top: '112px',
+          top: `${topPx}px`,
           left: `${rect.left}px`,
           width: `${rect.width}px`,
           zIndex: 30,
@@ -350,16 +362,16 @@ const BookingPage = () => {
 
   return (
     <div className="min-h-screen pb-16 bg-gradient-to-b from-[#eaf3f9] via-[#f1f7fb] to-[#f8fafc] text-slate-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+      <div className="max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         <form onSubmit={handleCreatePendingBooking} className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
           {/* Main Column: Stay Summary, Room Number Picker, Meal Plan, Arrival Time, Guest Details */}
-          <div className="lg:col-span-8 space-y-6">
+          <div ref={leftContainerRef} className="lg:col-span-8 space-y-6">
             
             {/* Stay Summary Banner */}
             <div className="card-white p-6 border border-slate-200 shadow-xs space-y-4">
               <h2 className="text-lg font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-teal-600" /> Stay Summary
+                <Building2 className="w-5 h-5 text-teal-600" /> {t('stay_summary')}
               </h2>
 
               <div className="flex flex-col sm:flex-row items-start gap-4">
@@ -407,20 +419,20 @@ const BookingPage = () => {
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-bold">
                 <div>
-                  <span className="text-slate-400 block uppercase text-[10px]">Check-in</span>
+                  <span className="text-slate-400 block uppercase text-[10px]">{t('check_in')}</span>
                   <span className="text-slate-900 font-black">{formatDisplayDate(checkIn)}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block uppercase text-[10px]">Check-out</span>
+                  <span className="text-slate-400 block uppercase text-[10px]">{t('check_out')}</span>
                   <span className="text-slate-900 font-black">{formatDisplayDate(checkOut)}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block uppercase text-[10px]">Duration</span>
-                  <span className="text-slate-900 font-black">{nights} Night(s)</span>
+                  <span className="text-slate-400 block uppercase text-[10px]">{t('duration')}</span>
+                  <span className="text-slate-900 font-black">{nights} {t('night')}(s)</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block uppercase text-[10px]">Guests & Rooms</span>
-                  <span className="text-slate-900 font-black">{guestsCount} Guests, {roomsCount} Room{roomsCount > 1 ? 's' : ''}</span>
+                  <span className="text-slate-400 block uppercase text-[10px]">{t('guests_rooms')}</span>
+                  <span className="text-slate-900 font-black">{guestsCount} {t('guests')}, {roomsCount} {t('room')}{roomsCount > 1 ? 's' : ''}</span>
                 </div>
               </div>
 
@@ -428,7 +440,7 @@ const BookingPage = () => {
                 <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <span className="text-slate-600 font-bold flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    Auto-Allocated Room Unit{roomsCount > 1 ? 's' : ''}:
+                    {t('auto_allocated_unit')}
                   </span>
                   <span className="font-mono font-black text-teal-800 bg-teal-50 border border-teal-200 px-3 py-1 rounded-xl text-xs shadow-2xs">
                     {selectedRoomNumbers.join(', ')}
@@ -440,7 +452,7 @@ const BookingPage = () => {
             {/* 🍽️ MEAL PLAN SELECTION CARD */}
             <div className="card-white p-6 border border-slate-200 shadow-xs space-y-4">
               <h2 className="text-lg font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
-                <Utensils className="w-5 h-5 text-teal-600" /> Select Meal Plan Upgrade
+                <Utensils className="w-5 h-5 text-teal-600" /> {t('select_meal_plan')}
               </h2>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -455,11 +467,11 @@ const BookingPage = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-black text-slate-900">Room Only</span>
-                    <span className="text-xs font-bold text-slate-500">Standard Tariff</span>
+                    <span className="text-sm font-black text-slate-900">{t('room_only')}</span>
+                    <span className="text-xs font-bold text-slate-500">{t('standard_tariff')}</span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">No meals included in tariff</p>
-                  <div className="mt-2 text-xs font-black text-teal-600">₹0 / night</div>
+                  <p className="text-xs text-slate-500 mt-1">{t('room_only_desc')}</p>
+                  <div className="mt-2 text-xs font-black text-teal-600">₹0 / {t('night')}</div>
                 </div>
 
                 {/* Breakfast Included */}
@@ -472,13 +484,13 @@ const BookingPage = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-black text-slate-900">Daily Breakfast</span>
+                    <span className="text-sm font-black text-slate-900">{t('daily_breakfast')}</span>
                     <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5" /> Popular
+                      <Sparkles className="w-3.5 h-3.5" /> {t('popular')}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Buffet spread at hotel restaurant</p>
-                  <div className="mt-2 text-xs font-black text-teal-600">+₹350 / night / room</div>
+                  <p className="text-xs text-slate-500 mt-1">{t('daily_breakfast_desc')}</p>
+                  <div className="mt-2 text-xs font-black text-teal-600">+₹350 / {t('night')} / {t('room')}</div>
                 </div>
 
                 {/* Half Board */}
@@ -491,11 +503,11 @@ const BookingPage = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-black text-slate-900">Half Board</span>
-                    <span className="text-xs font-bold text-slate-500">Breakfast + Dinner</span>
+                    <span className="text-sm font-black text-slate-900">{t('half_board')}</span>
+                    <span className="text-xs font-bold text-slate-500">{t('breakfast_dinner')}</span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Includes daily breakfast & buffet dinner</p>
-                  <div className="mt-2 text-xs font-black text-teal-600">+₹850 / night / room</div>
+                  <p className="text-xs text-slate-500 mt-1">{t('half_board_desc')}</p>
+                  <div className="mt-2 text-xs font-black text-teal-600">+₹850 / {t('night')} / {t('room')}</div>
                 </div>
 
                 {/* Full Board */}
@@ -508,11 +520,11 @@ const BookingPage = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-black text-slate-900">Full Board</span>
-                    <span className="text-xs font-bold text-slate-500">All Meals Included</span>
+                    <span className="text-sm font-black text-slate-900">{t('full_board')}</span>
+                    <span className="text-xs font-bold text-slate-500">{t('all_meals_included')}</span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Includes breakfast, lunch & dinner</p>
-                  <div className="mt-2 text-xs font-black text-teal-600">+₹1,400 / night / room</div>
+                  <p className="text-xs text-slate-500 mt-1">{t('full_board_desc')}</p>
+                  <div className="mt-2 text-xs font-black text-teal-600">+₹1,400 / {t('night')} / {t('room')}</div>
                 </div>
 
               </div>
@@ -523,13 +535,13 @@ const BookingPage = () => {
             {/* Guest Details Form */}
             <div className="card-white p-6 border border-slate-200 shadow-xs space-y-4">
               <h2 className="text-lg font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
-                <User className="w-5 h-5 text-teal-600" /> Guest Contact Information
+                <User className="w-5 h-5 text-teal-600" /> {t('guest_contact_info')}
               </h2>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
-                    Primary Guest Full Name
+                    {t('primary_guest_name')}
                   </label>
                   <input
                     type="text"
@@ -552,7 +564,7 @@ const BookingPage = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
-                      Email Address (For Voucher & Receipt)
+                      {t('email_address')}
                     </label>
                     <input
                       type="email"
@@ -574,7 +586,7 @@ const BookingPage = () => {
 
                   <div>
                     <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
-                      Mobile Number
+                      {t('mobile_number')}
                     </label>
                     <input
                       type="tel"
@@ -604,7 +616,7 @@ const BookingPage = () => {
 
                 <div>
                   <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
-                    Special Requests (Optional)
+                    {t('special_requests')}
                   </label>
                   <textarea
                     rows={2}
@@ -623,22 +635,22 @@ const BookingPage = () => {
           <div ref={rightContainerRef} className="lg:col-span-4 relative">
             <div
               style={fixedStyle}
-              className="space-y-5 max-h-[calc(100vh-125px)] overflow-y-auto no-scrollbar"
+              className="space-y-4 max-h-[calc(100vh-125px)] overflow-y-auto no-scrollbar"
             >
 
             {/* Promo Code Card */}
             <div className="card-white p-5 border border-slate-200/90 shadow-xs space-y-3.5 rounded-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Tag className="w-4 h-4 text-rose-600" /> Apply Promotional Coupon
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-rose-600" /> {t('apply_promo_coupon')}
                 </h3>
                 {appliedCoupon && (
                   <button
                     type="button"
                     onClick={handleRemoveCoupon}
-                    className="text-[11px] font-black text-rose-600 hover:underline cursor-pointer"
+                    className="text-xs font-black text-rose-600 hover:underline cursor-pointer"
                   >
-                    Remove
+                    {t('remove')}
                   </button>
                 )}
               </div>
@@ -658,7 +670,7 @@ const BookingPage = () => {
                   disabled={couponLoading || !couponCode.trim() || !!appliedCoupon}
                   className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black transition-all disabled:opacity-50 cursor-pointer shadow-xs active:scale-95"
                 >
-                  {couponLoading ? '...' : appliedCoupon ? 'Applied ✓' : 'Apply'}
+                  {couponLoading ? '...' : appliedCoupon ? t('applied') : t('apply')}
                 </button>
               </div>
 
@@ -677,26 +689,26 @@ const BookingPage = () => {
               {availableCoupons.length > 0 && !appliedCoupon && (
                 <div className="pt-2 border-t border-slate-100 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Available Offers & Deals</span>
-                    <span className="text-[10px] font-bold text-rose-600">{availableCoupons.length} coupons</span>
+                    <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">{t('available_offers')}</span>
+                    <span className="text-[11px] font-bold text-rose-600">{availableCoupons.length} {t('coupons')}</span>
                   </div>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-44 overflow-y-auto pr-1 custom-scrollbar">
                     {availableCoupons.map((c) => (
                       <div
                         key={c.id || c.code}
                         onClick={() => handleApplyCoupon(c.code)}
-                        className="group p-2 rounded-xl border border-dashed border-rose-200 bg-rose-50/40 hover:bg-rose-100/70 hover:border-rose-400 transition-all cursor-pointer flex items-center justify-between"
+                        className="group p-2 px-3 rounded-xl border border-dashed border-rose-200 bg-rose-50/40 hover:bg-rose-100/70 hover:border-rose-400 transition-all cursor-pointer flex items-center justify-between"
                       >
                         <div className="min-w-0 pr-2">
-                          <div className="text-[11px] font-black text-slate-900 flex items-center gap-1.5">
+                          <div className="text-xs font-black text-slate-900 flex items-center gap-1.5">
                             <span className="bg-rose-600 text-white font-mono font-black px-1.5 py-0.5 rounded text-[10px] tracking-wider">{c.code}</span>
                             <span className="text-slate-700 font-extrabold">{c.discount_percentage}% OFF</span>
                           </div>
-                          <p className="text-[9px] text-slate-500 font-medium truncate mt-0.5">
-                            Min spend ₹{parseFloat(c.min_booking_amount).toLocaleString()} • Max ₹{parseFloat(c.max_discount_amount).toLocaleString()}
+                          <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
+                            {t('min_spend')} ₹{parseFloat(c.min_booking_amount).toLocaleString()} • {t('max_discount')} ₹{parseFloat(c.max_discount_amount).toLocaleString()}
                           </p>
                         </div>
-                        <span className="text-[10px] font-black text-rose-600 shrink-0 group-hover:underline">Apply →</span>
+                        <span className="text-[11px] font-black text-rose-600 shrink-0 group-hover:underline">{t('apply')} →</span>
                       </div>
                     ))}
                   </div>
@@ -705,61 +717,61 @@ const BookingPage = () => {
             </div>
 
             {/* Price Summary Card */}
-            <div className="card-white p-6 border border-slate-200 shadow-md space-y-4">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3">
-                Price Breakdown
+            <div className="card-white p-5 sm:p-6 border border-slate-200 shadow-md space-y-3.5 rounded-2xl">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-2">
+                {t('price_breakdown')}
               </h3>
 
               <div className="space-y-2.5 text-xs font-semibold">
                 <div className="flex justify-between text-slate-600">
-                  <span>Allocated Unit{roomsCount > 1 ? 's' : ''}</span>
+                  <span>{t('allocated_unit')}</span>
                   <span className="font-mono font-black text-slate-900 text-right max-w-[150px] truncate">
-                    {selectedRoomNumbers.length > 0 ? selectedRoomNumbers.join(', ') : 'Auto-Allocated'}
+                    {selectedRoomNumbers.length > 0 ? (selectedRoomNumbers.length === 1 ? `Room ${selectedRoomNumbers[0]}` : selectedRoomNumbers.join(', ')) : 'Auto-Allocated'}
                   </span>
                 </div>
 
                 <div className="flex justify-between text-slate-600">
-                  <span>Room Charge (₹{roomPrice} × {nights}n × {roomsCount}r)</span>
+                  <span>{t('room_charge')} (₹{roomPrice} × {nights}n × {roomsCount}r)</span>
                   <span>₹{roomSubtotal.toFixed(2)}</span>
                 </div>
 
                 {mealPricePerNight > 0 && (
                   <div className="flex justify-between text-teal-700 font-bold">
-                    <span>Meal Plan ({selectedMealPlan})</span>
+                    <span>{t('meal_plan')} ({selectedMealPlan})</span>
                     <span>+₹{mealSubtotal.toFixed(2)}</span>
                   </div>
                 )}
 
                 <div className="flex justify-between text-slate-600">
-                  <span>Estimated Taxes (18% GST)</span>
+                  <span>{t('estimated_taxes')}</span>
                   <span>+₹{taxes.toFixed(2)}</span>
                 </div>
 
                 {discount > 0 && (
                   <div className="flex justify-between text-teal-600 font-extrabold">
-                    <span>Coupon Discount</span>
+                    <span>{t('coupon_discount')}</span>
                     <span>-₹{discount.toFixed(2)}</span>
                   </div>
                 )}
 
-                <div className="pt-3 border-t border-slate-200 flex justify-between text-slate-900 font-black text-base">
-                  <span>Total Amount</span>
-                  <span className="text-teal-600">₹{totalAmount.toFixed(2)}</span>
+                <div className="pt-2.5 border-t border-slate-200 flex justify-between text-slate-900 font-black text-base">
+                  <span>{t('total_amount')}</span>
+                  <span className="text-teal-600 text-lg font-black">₹{totalAmount.toFixed(2)}</span>
                 </div>
               </div>
 
               <button
                 type="submit"
                 disabled={creatingBooking}
-                className="btn-teal w-full py-3.5 text-xs font-black uppercase tracking-wider shadow-lg shadow-teal-600/30 disabled:opacity-50"
+                className="btn-teal w-full py-3.5 text-xs font-black uppercase tracking-wider shadow-lg shadow-teal-600/30 disabled:opacity-50 cursor-pointer"
               >
                 {creatingBooking ? (
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Reserving {selectedRoomNumbers.join(', ')}...</span>
+                    <span>{t('reserving')}</span>
                   </div>
                 ) : (
-                  `Reserve ${roomsCount} Room${roomsCount > 1 ? 's' : ''} & Pay ₹${totalAmount.toFixed(2)}`
+                  `${t('reserve_and_pay')} ₹${totalAmount.toFixed(2)}`
                 )}
               </button>
             </div>

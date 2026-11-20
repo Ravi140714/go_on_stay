@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Building2, MapPin, Star, Clock, ShieldCheck, Plus, ArrowLeft, Upload, Image as ImageIcon, X, CheckCircle2 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { parseApiError } from '../../utils/errorHandler';
 import FieldError from '../../components/FieldError';
 
@@ -10,6 +11,7 @@ const AddEditHotel = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { showToast } = useAuth();
+  const { t } = useLanguage();
 
   const isEditMode = Boolean(id);
 
@@ -519,7 +521,7 @@ const AddEditHotel = () => {
               onClick={() => navigate('/owner/dashboard')}
               className="btn-dark py-3 px-6 text-xs uppercase tracking-wider"
             >
-              Cancel
+              {t('cancel', 'Cancel')}
             </button>
             
             <button
@@ -527,7 +529,7 @@ const AddEditHotel = () => {
               disabled={loading}
               className="btn-teal py-3 px-8 text-xs uppercase tracking-wider font-extrabold shadow-lg shadow-teal-600/30"
             >
-              {loading ? 'Uploading & Saving Property...' : isEditMode ? 'Update Hotel' : 'Save & Publish Hotel'}
+              {loading ? t('loading', 'Uploading & Saving Property...') : isEditMode ? t('edit_hotel', 'Update Hotel') : t('add_hotel', 'Save & Publish Hotel')}
             </button>
           </div>
 

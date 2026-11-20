@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { KeyRound, Mail, User, Eye, EyeOff, Hotel, Sparkles, Star, CheckCircle2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import FieldError from '../components/FieldError';
 
 const Login = () => {
   const { login, logout, user, showToast } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -128,7 +130,7 @@ const Login = () => {
 
             <div>
               <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
-                Username or Email
+                {t('username_email')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -145,7 +147,7 @@ const Login = () => {
                     setUsername(e.target.value);
                     if (fieldErrors.username) setFieldErrors((prev) => ({ ...prev, username: '' }));
                   }}
-                  placeholder="Enter username or registered email"
+                  placeholder={t('username_email')}
                   className={`w-full pl-10 pr-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white transition-all outline-none ${
                     fieldErrors.username
                       ? 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 focus:border-rose-600'
@@ -159,10 +161,10 @@ const Login = () => {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
-                  Password
+                  {t('password')}
                 </label>
                 <Link to="/forgot-password" className="text-xs text-rose-600 font-extrabold hover:underline">
-                  Forgot password?
+                  {t('forgot_password')}
                 </Link>
               </div>
               <div className="relative">
@@ -206,11 +208,11 @@ const Login = () => {
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Signing In...</span>
+                  <span>...</span>
                 </div>
               ) : (
                 <>
-                  <span>Sign In to Account</span>
+                  <span>{t('sign_in')}</span>
                   <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                 </>
               )}
@@ -220,9 +222,9 @@ const Login = () => {
           {/* Footer Links */}
           <div className="pt-2 border-t border-slate-100 text-center">
             <div className="text-xs text-slate-500 font-semibold">
-              Don't have an account?{' '}
+              {t('dont_have_account')}{' '}
               <Link to="/register" className="text-rose-600 font-black hover:underline">
-                Register Here
+                {t('create_account')}
               </Link>
             </div>
           </div>

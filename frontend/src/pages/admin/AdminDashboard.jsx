@@ -5,7 +5,7 @@ import {
   ShieldCheck, Lock, Unlock, CheckCircle, CheckCircle2, XCircle, Search, RefreshCw, CreditCard, RotateCcw,
   Tag, Star, Download, Plus, Trash2, Filter, AlertCircle, Ban, Check, UserCheck, Shield,
   Layers, ArrowUpRight, ChevronRight, ChevronLeft, Activity, Sliders, CheckSquare, Sparkles, UserPlus, Menu,
-  Landmark, Clock, FileText, ExternalLink, HelpCircle, AlertTriangle, Eye, ShieldAlert, Wallet, Bell, MessageSquare
+  Landmark, Clock, FileText, ExternalLink, HelpCircle, AlertTriangle, Eye, ShieldAlert, Wallet, Bell, MessageSquare, Globe
 } from 'lucide-react';
 import api from '../../services/api';
 import {
@@ -19,6 +19,7 @@ import {
   ownerEarningService
 } from '../../services';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { formatDisplayDate } from '../../utils/dateUtils';
 import Sidebar from '../../components/Sidebar';
 import NotificationBell from '../../components/NotificationBell';
@@ -60,6 +61,7 @@ const SLUG_TO_TAB = {
 
 const AdminDashboard = () => {
   const { showToast, user: currentUser } = useAuth();
+  const { t, currentLang, changeLanguage } = useLanguage();
   const [searchParams] = useSearchParams();
   const { subTab } = useParams();
   const navigate = useNavigate();
@@ -448,22 +450,71 @@ const AdminDashboard = () => {
     }
   };
 
+  const refreshSettlementsOnly = async () => {
+    try {
+      const resData = await ownerEarningService.getSettlements();
+      const rawSettlements = resData?.results || [];
+      setSettlementsList(rawSettlements);
+      if (resData?.summary) setSettlementSummary(resData.summary);
+      if (resData?.hotels_summary) setHotelsSummary(resData.hotels_summary);
+    } catch (e) {
+      console.warn('Background settlements refresh failed:', e);
+    }
+  };
+
   const handleToggleDispute = async (earning, shouldDispute, reasonText = '') => {
+    if (!earning) {
+      showToast('No settlement record selected.', 'error');
+      return;
+    }
+    setSavingDispute(true);
+    const earningId = earning?.id || earning?.earning_id || earning;
     try {
       const res = await api.post('/payments/admin/earnings/toggle-dispute/', {
-        earning_id: earning.id,
+        earning_id: earningId,
         is_disputed: shouldDispute,
+        dispute_reason: reasonText,
         reason: reasonText
       });
-      showToast(res.data.message || (shouldDispute ? 'Dispute hold placed.' : 'Dispute hold released.'), 'success');
+
+      // Immediate local state update for instant UI response (<100ms)
+      const updatedEarning = res.data?.earning;
+      setSettlementsList(prev => prev.map(s => {
+        if (s.id === earningId || String(s.booking_id) === String(earning?.booking_id) || String(s.booking) === String(earning?.booking)) {
+          return updatedEarning ? { ...s, ...updatedEarning } : {
+            ...s,
+            is_disputed: shouldDispute,
+            status: shouldDispute ? 'DISPUTED' : 'ON_HOLD',
+            dispute_reason: shouldDispute ? reasonText : ''
+          };
+        }
+        return s;
+      }));
+
+      showToast(res.data?.message || (shouldDispute ? 'Dispute hold placed. Notice sent to hotel owner.' : 'Dispute hold released & unlocked.'), 'success');
       setShowDisputeModal(false);
       setSelectedEarningForDispute(null);
       setDisputeReason('');
-      fetchAdminData();
+      setSavingDispute(false);
+
+      // Non-blocking background sync without full-screen loading spinner
+      refreshSettlementsOnly();
     } catch (err) {
       console.error('Toggle dispute error:', err);
-      const msg = err.response?.data?.error || 'Failed to update dispute status.';
-      showToast(msg, 'error');
+      let errorMsg = 'Failed to update dispute status.';
+      if (err.response?.data) {
+        if (typeof err.response.data.error === 'string') {
+          errorMsg = err.response.data.error;
+        } else if (typeof err.response.data.detail === 'string') {
+          errorMsg = err.response.data.detail;
+        } else if (typeof err.response.data === 'object') {
+          const firstKey = Object.keys(err.response.data)[0];
+          const firstVal = err.response.data[firstKey];
+          errorMsg = Array.isArray(firstVal) ? `${firstKey}: ${firstVal[0]}` : String(firstVal);
+        }
+      }
+      showToast(errorMsg, 'error');
+      setSavingDispute(false);
     }
   };
 
@@ -1613,13 +1664,16 @@ const AdminDashboard = () => {
   // Helper to determine if a stay/settlement is cancelled, reversed or refunded
   const isCancelledOrRefundedStay = (s) => {
     if (!s) return false;
+    // Administrative dispute holds on host earnings are NOT customer refund cancellations
+    if (s.is_disputed || (s.status || '').toUpperCase() === 'DISPUTED') return false;
+
     const tBooking = bookingsList.find(b => String(b.id) === String(s.booking_id || s.booking) || String(b.booking_id) === String(s.booking_id || s.booking));
     if (checkIsBookingRefunded(s, tBooking)) return true;
 
     const stat = (s.status || '').toUpperCase();
     const bStat = (s.booking_status || '').toUpperCase();
     if (stat === 'REVERSED' || stat === 'REFUNDED' || bStat === 'CANCELLED') return true;
-    if (s.is_eligible === false && stat !== 'PAID' && stat !== 'ON_HOLD') return true;
+    if (s.is_eligible === false && stat !== 'PAID' && stat !== 'ON_HOLD' && stat !== 'DISPUTED') return true;
 
     if (tBooking) {
       const tbStatus = (tBooking.status || tBooking.booking_status || '').toUpperCase();
@@ -1862,10 +1916,10 @@ const AdminDashboard = () => {
       icon: Activity,
       items: [
         { id: 'OVERVIEW', label: 'Executive Overview', icon: Activity, badge: null },
-        { id: 'HOTELS', label: 'Hotels & Properties', icon: Building2, badge: hotelsList.length },
-        { id: 'USERS', label: 'Users & Roles', icon: Users, badge: usersList.length },
-        { id: 'BOOKINGS', label: 'Reservations & Stays', icon: CalendarCheck, badge: bookingsList.length },
-        { id: 'TICKETS', label: 'Support Tickets', icon: MessageSquare, badge: 'Desk' },
+        { id: 'HOTELS', label: 'Hotels & Properties', icon: Building2, badge: null },
+        { id: 'USERS', label: 'Users & Roles', icon: Users, badge: null },
+        { id: 'BOOKINGS', label: 'Reservations & Stays', icon: CalendarCheck, badge: null },
+        { id: 'TICKETS', label: 'Support Tickets', icon: MessageSquare, badge: null },
       ]
     },
     {
@@ -1873,10 +1927,10 @@ const AdminDashboard = () => {
       title: 'Finance & Escrow',
       icon: IndianRupee,
       items: [
-        { id: 'SETTLEMENTS', label: 'Host Settlements & Escrow', icon: Landmark, badge: liveEligibleCount > 0 ? `${liveEligibleCount} Payout Due` : null },
-        { id: 'REFUNDS', label: 'Customer Refunds', icon: RotateCcw, badge: pendingRefundsCount > 0 ? `${pendingRefundsCount} Due` : null },
-        { id: 'PAYMENTS', label: 'Payments Ledger', icon: CreditCard, badge: paymentsList.length },
-        { id: 'COUPONS', label: 'Promo Coupons', icon: Tag, badge: couponsList.length },
+        { id: 'SETTLEMENTS', label: 'Host Settlements & Escrow', icon: Landmark, badge: null },
+        { id: 'REFUNDS', label: 'Customer Refunds', icon: RotateCcw, badge: null },
+        { id: 'PAYMENTS', label: 'Payments Ledger', icon: CreditCard, badge: null },
+        { id: 'COUPONS', label: 'Promo Coupons', icon: Tag, badge: null },
       ]
     }
   ];
@@ -1915,17 +1969,17 @@ const AdminDashboard = () => {
               <div className="flex items-center gap-2.5">
                 <h1 className="text-lg font-black tracking-tight text-slate-900 uppercase flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-[#D4AF37] animate-pulse"></span>
-                  {activeTab === 'OVERVIEW' ? 'Executive Overview & Performance' :
-                   activeTab === 'HOTELS' ? 'Hotel Properties Control' :
-                   activeTab === 'USERS' ? 'User Accounts & Roles Directory' :
-                   activeTab === 'BOOKINGS' ? 'Reservations & Stays Register' :
-                   activeTab === 'SETTLEMENTS' ? 'Host Settlements & Escrow Management' :
-                   activeTab === 'REFUNDS' ? 'Customer Cancellation & Refund Processing' :
-                   activeTab === 'PAYMENTS' ? 'Razorpay Payments Ledger' :
-                   activeTab === 'TICKETS' ? 'Guest & Owner Support Desk' : 'Promo & Discount Coupons'}
+                  {activeTab === 'OVERVIEW' ? t('Executive Overview') :
+                   activeTab === 'HOTELS' ? t('Hotels & Properties') :
+                   activeTab === 'USERS' ? t('Users & Roles') :
+                   activeTab === 'BOOKINGS' ? t('Reservations & Stays') :
+                   activeTab === 'SETTLEMENTS' ? t('Host Settlements & Escrow') :
+                   activeTab === 'REFUNDS' ? t('Customer Refunds') :
+                   activeTab === 'PAYMENTS' ? t('Payments Ledger') :
+                   activeTab === 'TICKETS' ? t('Support Tickets') : t('Promo Coupons')}
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-300 font-bold shadow-xs">
-                  {activeTab}
+                  {t(activeTab)}
                 </span>
               </div>
             </div>
@@ -1936,7 +1990,7 @@ const AdminDashboard = () => {
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search bookings, hotels, users..."
+              placeholder={t('search_admin_placeholder', 'Search bookings, hotels, users...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-8 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#D8A74B] focus:bg-white transition-all shadow-inner"
@@ -1953,18 +2007,40 @@ const AdminDashboard = () => {
           </div>
 
           <div className="flex items-center gap-2.5">
+            {/* Language Switcher Pill */}
+            <div className="flex items-center bg-slate-100 border border-slate-200 rounded-xl p-0.5 gap-0.5">
+              {[
+                { code: 'en-IN', label: 'EN' },
+                { code: 'hi-IN', label: 'हिं' },
+                { code: 'gu-IN', label: 'ગુજ' }
+              ].map(lang => (
+                <button
+                  key={lang.code}
+                  type="button"
+                  onClick={() => changeLanguage(lang.code)}
+                  className={`px-2 py-1 text-[11px] font-black rounded-lg transition-all ${
+                    currentLang === lang.code
+                      ? 'bg-gradient-to-r from-[#BF8E36] to-[#D8A74B] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  {lang.label}
+                </button>
+              ))}
+            </div>
+
             <NotificationBell />
             <button
               onClick={handleExportCSV}
               className="py-2 px-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-bold transition-all shadow-xs inline-flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap leading-none cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Export CSV
+              <Download className="w-3.5 h-3.5 text-amber-600 shrink-0" /> {t('export_csv', 'Export CSV')}
             </button>
             <button
               onClick={fetchAdminData}
               className="py-2 px-4 rounded-xl bg-gradient-to-r from-[#BF8E36] via-[#D8A74B] to-[#BF8E36] text-white font-black text-xs transition-all shadow-sm hover:brightness-105 inline-flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap leading-none cursor-pointer"
             >
-              <RefreshCw className="w-3.5 h-3.5 shrink-0" /> Sync Data
+              <RefreshCw className="w-3.5 h-3.5 shrink-0" /> {t('sync_data', 'Sync Data')}
             </button>
           </div>
         </header>
@@ -3482,7 +3558,17 @@ const AdminDashboard = () => {
 
                             <td className="p-4 text-right">
                               <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                                {isCancelledOrRefundedStay(earning) || earning.status === 'REVERSED' || earning.booking_status === 'CANCELLED' ? (
+                                {earning.is_disputed || earning.status === 'DISPUTED' ? (
+                                  <button
+                                    type="button"
+                                    disabled={savingDispute}
+                                    onClick={() => handleToggleDispute(earning, false)}
+                                    className="py-1 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-black text-[11px] transition-colors inline-flex items-center gap-1 cursor-pointer shadow-xs whitespace-nowrap disabled:opacity-50"
+                                    title="Unlock dispute and release payout hold"
+                                  >
+                                    <Unlock className="w-3.5 h-3.5" /> Unlock / Release Hold
+                                  </button>
+                                ) : isCancelledOrRefundedStay(earning) || earning.status === 'REVERSED' || earning.booking_status === 'CANCELLED' ? (
                                   (() => {
                                     const tBooking = bookingsList.find(b => String(b.id) === String(earning.booking_id || earning.booking) || String(b.booking_id) === String(earning.booking_id || earning.booking));
                                     const tbStatus = (tBooking?.status || tBooking?.booking_status || '').toUpperCase();
@@ -3606,15 +3692,7 @@ const AdminDashboard = () => {
                                       </button>
                                     )}
 
-                                    {earning.is_disputed ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleToggleDispute(earning, false)}
-                                        className="py-1 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-900 font-black text-[11px] transition-colors inline-flex items-center gap-1 cursor-pointer"
-                                      >
-                                        Release Hold
-                                      </button>
-                                    ) : earning.status !== 'PAID' && !isEligible && (
+                                    {earning.status !== 'PAID' && (
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -3622,9 +3700,9 @@ const AdminDashboard = () => {
                                           setDisputeReason('');
                                           setShowDisputeModal(true);
                                         }}
-                                        className="py-1 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                        className="py-1 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] transition-colors inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
                                       >
-                                        Hold / Dispute
+                                        <Lock className="w-3 h-3" /> Hold / Dispute
                                       </button>
                                     )}
                                   </>
@@ -5212,37 +5290,55 @@ const AdminDashboard = () => {
               Enter reason for blocking payout for booking <strong className="font-mono text-slate-900">#{selectedEarningForDispute.booking_id}</strong> ({selectedEarningForDispute.hotel_name}):
             </p>
 
-            <div>
-              <label className="block text-[11px] font-black uppercase tracking-wider text-slate-800 mb-1">
-                Dispute / Investigation Reason <span className="text-rose-600">*</span>
-              </label>
-              <textarea
-                rows={3}
-                required
-                value={disputeReason}
-                onChange={(e) => setDisputeReason(e.target.value)}
-                placeholder="e.g. Guest reported unhygienic room condition under support ticket #12; pending inspection."
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium outline-none focus:border-red-600 focus:bg-white text-xs"
-              ></textarea>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-900 font-medium">
+              📢 <strong>Hotel Owner Notice:</strong> The hotel owner will receive an immediate notification message informing them of this reason. You can unlock and release this hold directly from the dashboard at any time.
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowDisputeModal(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleToggleDispute(selectedEarningForDispute, true, disputeReason)}
-                disabled={!disputeReason.trim()}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black cursor-pointer disabled:opacity-50"
-              >
-                Place on Hold
-              </button>
-            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (disputeReason?.trim() && !savingDispute) {
+                handleToggleDispute(selectedEarningForDispute, true, disputeReason);
+              }
+            }} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-black uppercase tracking-wider text-slate-800 mb-1">
+                  Dispute / Investigation Reason <span className="text-rose-600">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  autoFocus
+                  value={disputeReason}
+                  onChange={(e) => setDisputeReason(e.target.value)}
+                  placeholder="e.g. Guest reported unhygienic room condition under support ticket #12; pending inspection."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium outline-none focus:border-red-600 focus:bg-white text-xs select-text"
+                ></textarea>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={savingDispute}
+                  onClick={() => setShowDisputeModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingDispute || !disputeReason?.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black cursor-pointer disabled:opacity-50 inline-flex items-center gap-2 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  {savingDispute ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Placing Hold...
+                    </>
+                  ) : (
+                    'Place on Hold'
+                  )}
+                </button>
+              </div>
+            </form>
 
           </div>
         </div>

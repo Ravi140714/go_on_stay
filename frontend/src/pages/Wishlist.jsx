@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import { Heart, MapPin, Star } from 'lucide-react';
 import { wishlistService } from '../services';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const Wishlist = () => {
   const { showToast } = useAuth();
+  const { t } = useLanguage();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,10 +44,10 @@ const Wishlist = () => {
         {/* Header */}
         <div className="border-b border-slate-200 pb-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 text-xs font-bold uppercase tracking-wider mb-2">
-            <Heart className="w-3.5 h-3.5 fill-teal-600 text-teal-600" /> Saved Stays
+            <Heart className="w-3.5 h-3.5 fill-teal-600 text-teal-600" /> {t('saved_stays')}
           </div>
-          <h1 className="text-3xl font-black text-slate-900">My Wishlist</h1>
-          <p className="text-xs text-slate-500 font-semibold">Your favorite hotels and luxury property collections</p>
+          <h1 className="text-3xl font-black text-slate-900">{t('my_wishlist_title')}</h1>
+          <p className="text-xs text-slate-500 font-semibold">{t('wishlist_subtitle')}</p>
         </div>
 
         {loading ? (
@@ -56,12 +58,12 @@ const Wishlist = () => {
         ) : items.length === 0 ? (
           <div className="card-white p-12 text-center space-y-4">
             <Heart className="w-12 h-12 text-teal-600 mx-auto opacity-50" />
-            <h3 className="text-lg font-black text-slate-900">Your Wishlist is Empty</h3>
+            <h3 className="text-lg font-black text-slate-900">{t('wishlist_empty')}</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Save your favorite luxury hotels and boutique suites to quickly compare room tariffs and plan upcoming trips.
+              {t('wishlist_empty_desc')}
             </p>
             <Link to="/search" className="btn-teal py-2.5 px-6 text-xs font-extrabold inline-flex">
-              Explore Hotels
+              {t('browse_rooms')}
             </Link>
           </div>
         ) : (
@@ -104,8 +106,8 @@ const Wishlist = () => {
                       {h.address}, {h.city}
                     </p>
                     <div className="pt-2 flex items-center justify-between text-xs border-t border-slate-100 font-bold">
-                      <span className="text-slate-500">Starting Tariff:</span>
-                      <span className="text-teal-600 font-black text-sm">₹{h.starting_price}/night</span>
+                      <span className="text-slate-500">{t('price_from')}:</span>
+                      <span className="text-teal-600 font-black text-sm">₹{h.starting_price}/{t('night')}</span>
                     </div>
                   </div>
 
@@ -114,7 +116,7 @@ const Wishlist = () => {
                       to={`/hotels/${h.id}`}
                       className="btn-teal w-full py-2.5 text-xs font-extrabold flex items-center justify-center gap-1.5"
                     >
-                      View Available Rooms
+                      {t('view_details')}
                     </Link>
                   </div>
                 </div>

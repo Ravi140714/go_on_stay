@@ -4,11 +4,13 @@ import { BedDouble, Plus, ArrowLeft, Trash2, Edit, Users, Utensils, CheckCircle,
 import api from '../../services/api';
 import { ownerHotelService, ownerRoomService, ownerBookingService } from '../../services';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 const ManageRooms = () => {
   const { hotelId } = useParams();
   const navigate = useNavigate();
   const { showToast } = useAuth();
+  const { t } = useLanguage();
 
   const [hotel, setHotel] = useState(null);
   const [rooms, setRooms] = useState([]);
@@ -68,9 +70,9 @@ const ManageRooms = () => {
             </button>
             <div>
               <h1 className="text-2xl font-black text-slate-900">
-                Manage Rooms: {hotel?.name || 'Hotel Property'}
+                {t('manage_rooms', 'Manage Rooms')}: {t(hotel?.name || 'Hotel Property')}
               </h1>
-              <p className="text-xs text-slate-500 font-semibold">{hotel?.city}, {hotel?.state} • Set pricing, room units & view reserved bookings</p>
+              <p className="text-xs text-slate-500 font-semibold">{hotel?.city}, {hotel?.state} • {t('room_matrix_desc', 'Set pricing, room units & view reserved bookings')}</p>
             </div>
           </div>
 
@@ -80,7 +82,7 @@ const ManageRooms = () => {
             className="bg-[#0284C7] hover:bg-[#0369A1] text-white !text-white font-black text-sm py-2.5 px-5 rounded-full shadow-[0_4px_12px_rgba(2,132,199,0.25)] inline-flex flex-row items-center justify-center gap-2 transition-all whitespace-nowrap shrink-0 leading-none"
           >
             <Plus className="w-4 h-4 stroke-[3] text-white shrink-0" style={{ display: 'inline-block', flexShrink: 0 }} />
-            <span className="text-white !text-white font-black whitespace-nowrap" style={{ color: '#ffffff', whiteSpace: 'nowrap' }}>Add Room Category</span>
+            <span className="text-white !text-white font-black whitespace-nowrap" style={{ color: '#ffffff', whiteSpace: 'nowrap' }}>{t('add_room', 'Add Room Category')}</span>
           </Link>
         </div>
 

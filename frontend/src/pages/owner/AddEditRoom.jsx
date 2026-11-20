@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { BedDouble, IndianRupee, Users, ArrowLeft, Plus, Upload, X, Building, Image as ImageIcon } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { parseApiError } from '../../utils/errorHandler';
 import FieldError from '../../components/FieldError';
 
@@ -10,6 +11,7 @@ const AddEditRoom = () => {
   const { hotelId, roomId } = useParams();
   const navigate = useNavigate();
   const { showToast } = useAuth();
+  const { t } = useLanguage();
 
   const isEditMode = Boolean(roomId);
 
@@ -617,7 +619,7 @@ const AddEditRoom = () => {
               onClick={() => navigate(`/owner/hotels/${hotelId}/rooms`)}
               className="btn-dark py-3 px-6 text-xs uppercase tracking-wider font-extrabold"
             >
-              Cancel
+              {t('cancel', 'Cancel')}
             </button>
             
             <button
@@ -625,7 +627,7 @@ const AddEditRoom = () => {
               disabled={loading}
               className="btn-teal py-3 px-8 text-xs uppercase tracking-wider font-extrabold shadow-lg shadow-teal-600/30"
             >
-              {loading ? 'Uploading Photos & Saving...' : isEditMode ? 'Update Room & Photos' : 'Save Room & Photos'}
+              {loading ? t('loading', 'Uploading Photos & Saving...') : isEditMode ? t('edit', 'Update Room & Photos') : t('add', 'Save Room & Photos')}
             </button>
           </div>
 

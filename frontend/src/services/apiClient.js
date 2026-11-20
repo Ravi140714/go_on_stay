@@ -52,12 +52,29 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// Response interceptor: Handle 401 and refresh token
+// Response interceptor: Handle 401, refresh token, and Server Offline detection
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     // If request was canceled by AbortController, rethrow immediately without refresh attempt
     if (axios.isCancel(error)) {
+      return Promise.reject(error);
+    }
+
+    // Detect if Backend Server is completely OFF / Unreachable (Network Error / Connection Refused)
+    const isNetworkError = !error.response && (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error'));
+    if (isNetworkError) {
+      const hasStoredToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) || localStorage.getItem(STORAGE_KEYS.USER);
+      if (hasStoredToken) {
+        // Backend server is OFF! Clear stored session immediately so user must log in once backend reconnects
+        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        sessionStorage.clear();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:server-disconnected'));
+        }
+      }
       return Promise.reject(error);
     }
 

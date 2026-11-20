@@ -9,7 +9,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import NotificationBell from './NotificationBell';
-import { hotelService } from '../services';
+import { hotelService, wishlistService } from '../services';
 
 const destinationsList = [
   {
@@ -74,15 +74,6 @@ const languagesList = [
   { id: 'en-IN', name: 'English (IN)', native: 'English', region: 'India' },
   { id: 'hi-IN', name: 'Hindi', native: 'हिन्दी', region: 'भारत' },
   { id: 'gu-IN', name: 'Gujarati', native: 'ગુજરાતી', region: 'ભારત' },
-  { id: 'mr-IN', name: 'Marathi', native: 'मराठी', region: 'भारत' },
-  { id: 'bn-IN', name: 'Bengali', native: 'বাংলা', region: 'भारत' },
-  { id: 'ta-IN', name: 'Tamil', native: 'தமிழ்', region: 'இந்தியா' },
-  { id: 'te-IN', name: 'Telugu', native: 'తెలుగు', region: 'భారతదేశం' },
-  { id: 'en-US', name: 'English (US)', native: 'English', region: 'United States' },
-  { id: 'es-ES', name: 'Spanish', native: 'Español', region: 'España' },
-  { id: 'fr-FR', name: 'French', native: 'Français', region: 'France' },
-  { id: 'de-DE', name: 'German', native: 'Deutsch', region: 'Deutschland' },
-  { id: 'ja-JP', name: 'Japanese', native: '日本語', region: '日本' },
 ];
 
 const currenciesList = [
@@ -278,14 +269,14 @@ const Navbar = () => {
     SUPPORT_AGENT: <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">Support Agent</span>,
   };
 
-  // Hide main website navbar on Admin and Owner dashboard pages so Sidebar takes full screen height
-  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/owner')) {
+  // Hide main website navbar on Admin, Owner, and Staff dashboard pages so Workspace takes full screen
+  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/owner') || location.pathname.startsWith('/staff')) {
     return null;
   }
 
   return (
     <nav className="sticky top-0 left-0 right-0 z-50 bg-[#d5e7f5]/95 backdrop-blur-md border-b border-sky-200/60 text-slate-900 transition-all duration-300 shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
           
           {/* Logo */}
@@ -338,7 +329,7 @@ const Navbar = () => {
                 }`}
                 title="Choose Destination"
               >
-                <span>Where</span>
+                <span>{t('where')}</span>
               </button>
 
               <span className="w-px h-4 bg-slate-200 shrink-0"></span>
@@ -354,7 +345,7 @@ const Navbar = () => {
                 }`}
                 title="Select Dates"
               >
-                <span>When</span>
+                <span>{t('when')}</span>
               </button>
 
               <span className="w-px h-4 bg-slate-200 shrink-0"></span>
@@ -370,7 +361,7 @@ const Navbar = () => {
                 }`}
                 title="Select Guests & Rooms"
               >
-                <span>Who</span>
+                <span>{t('who')}</span>
               </button>
 
               {/* Search Button (Sky Blue Circle) */}
@@ -389,10 +380,10 @@ const Navbar = () => {
               <div className="absolute top-full left-0 mt-3 w-96 bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 z-50 animate-in fade-in zoom-in-95 duration-200 text-left">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                    Search City or Destination
+                    {t('search_city_dest')}
                   </h4>
                   <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
-                    Popular Stays
+                    {t('popular_stays')}
                   </span>
                 </div>
 
@@ -688,7 +679,7 @@ const Navbar = () => {
                         className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer select-none"
                       >
                         <User className="w-4 h-4 text-rose-600 shrink-0 pointer-events-none" />
-                        <span className="pointer-events-none">Manage Profile</span>
+                        <span className="pointer-events-none">{t('manage_profile')}</span>
                       </Link>
 
                       <Link
@@ -697,7 +688,16 @@ const Navbar = () => {
                         className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors"
                       >
                         <CalendarCheck className="w-4 h-4 text-rose-600" />
-                        My Bookings
+                        {t('my_bookings')}
+                      </Link>
+
+                      <Link
+                        to="/wishlist"
+                        onClick={() => setDropdownOpen(false)}
+                        className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                      >
+                        <Heart className="w-4 h-4 text-rose-600" />
+                        {t('my_wishlist')}
                       </Link>
 
                       <Link
@@ -706,7 +706,7 @@ const Navbar = () => {
                         className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-purple-50 hover:text-purple-600 transition-colors"
                       >
                         <Sparkles className="w-4 h-4 text-purple-600" />
-                        Help & Support
+                        {t('help_support')}
                       </Link>
 
                       {isCustomer && (
@@ -715,7 +715,7 @@ const Navbar = () => {
                           onClick={() => setDropdownOpen(false)}
                           className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors"
                         >
-                          Become a Host (List Hotel)
+                          {t('become_host_list')}
                         </Link>
                       )}
 
@@ -726,18 +726,18 @@ const Navbar = () => {
                           className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-sky-700 hover:bg-sky-50 transition-colors"
                         >
                           <Building2 className="w-4 h-4" />
-                          Hotel Owner Portal
+                          {t('owner_portal')}
                         </Link>
                       )}
 
-                      {(user.role === 'HOTEL_STAFF' || user.role === 'HOTEL_OWNER' || user.role === 'ADMIN' || user.is_superuser) && (
+                      {(user.isStaff || user.role === 'STAFF' || user.role === 'HOTEL_STAFF' || user.role === 'HOTEL_OWNER' || user.role === 'ADMIN' || user.is_superuser) && (
                         <Link
                           to="/staff/dashboard"
                           onClick={() => setDropdownOpen(false)}
                           className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition-colors"
                         >
                           <Hotel className="w-4 h-4 text-indigo-600" />
-                          Hotel Staff Desk
+                          {user.department_name ? `${user.department_name} Portal` : t('staff_desk')}
                         </Link>
                       )}
 
@@ -748,7 +748,7 @@ const Navbar = () => {
                           className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-amber-700 hover:bg-amber-50 transition-colors"
                         >
                           <ShieldCheck className="w-4 h-4 text-amber-600" />
-                          Admin Console
+                          {t('admin_portal')}
                         </Link>
                       )}
 
@@ -758,7 +758,7 @@ const Navbar = () => {
                         className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors border-t border-slate-100 mt-1 pt-2"
                       >
                         <Settings className="w-4 h-4 text-slate-600" />
-                        Settings & Language
+                        {t('settings_lang')}
                       </Link>
 
                       <button
@@ -766,7 +766,7 @@ const Navbar = () => {
                         className="w-full flex items-center gap-2.5 px-3.5 py-2.5 mt-1 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors"
                       >
                         <LogOut className="w-4 h-4" />
-                        Sign Out
+                        {t('sign_out')}
                       </button>
                     </>
                   ) : (
@@ -776,28 +776,28 @@ const Navbar = () => {
                         onClick={() => setDropdownOpen(false)}
                         className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-black text-slate-900 hover:bg-rose-50 hover:text-rose-600 transition-colors"
                       >
-                        Sign In
+                        {t('sign_in')}
                       </Link>
                       <Link
                         to="/register"
                         onClick={() => setDropdownOpen(false)}
                         className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-black text-rose-600 hover:bg-rose-50 transition-colors"
                       >
-                        Create Account
+                        {t('register')}
                       </Link>
                       <Link
                         to="/become-host"
                         onClick={() => setDropdownOpen(false)}
                         className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-extrabold text-slate-800 hover:bg-rose-50 hover:text-rose-600 transition-colors"
                       >
-                        Become a Host (List Hotel)
+                        {t('become_host_list')}
                       </Link>
                       <Link
                         to="/about"
                         onClick={() => setDropdownOpen(false)}
                         className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors border-t border-slate-100 mt-1 pt-2"
                       >
-                        About GoOnStay
+                        {t('about')}
                       </Link>
                     </>
                   )}
@@ -864,21 +864,29 @@ const Navbar = () => {
                   onClick={() => setMenuOpen(false)}
                   className="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-600"
                 >
-                  My Bookings
+                  {t('my_bookings')}
+                </Link>
+                <Link
+                  to="/wishlist"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-600"
+                >
+                  <Heart className="w-4 h-4 text-rose-600" />
+                  <span>{t('my_wishlist')}</span>
                 </Link>
                 <Link
                   to="/profile"
                   onClick={() => setMenuOpen(false)}
                   className="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-600"
                 >
-                  My Profile
+                  {t('my_profile')}
                 </Link>
                 <Link
                   to="/profile?tab=settings"
                   onClick={() => setMenuOpen(false)}
                   className="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-600"
                 >
-                  Settings & Language
+                  {t('settings_lang')}
                 </Link>
                 {isHotelOwner && (
                   <Link
@@ -886,7 +894,7 @@ const Navbar = () => {
                     onClick={() => setMenuOpen(false)}
                     className="block px-3 py-2 rounded-lg text-sm text-teal-700 font-bold"
                   >
-                    Hotel Owner Portal
+                    {t('owner_portal')}
                   </Link>
                 )}
                 {isAdmin && (
@@ -895,7 +903,7 @@ const Navbar = () => {
                     onClick={() => setMenuOpen(false)}
                     className="block px-3 py-2 rounded-lg text-sm text-cyan-700 font-bold"
                   >
-                    Admin Console
+                    {t('admin_portal')}
                   </Link>
                 )}
                 <button
@@ -905,7 +913,7 @@ const Navbar = () => {
                   }}
                   className="w-full text-left px-3 py-2 text-sm text-rose-600 font-bold"
                 >
-                  Sign Out
+                  {t('sign_out')}
                 </button>
               </>
             ) : (
@@ -915,14 +923,14 @@ const Navbar = () => {
                   onClick={() => setMenuOpen(false)}
                   className="w-full py-2.5 text-center rounded-xl bg-slate-100 text-sm font-bold text-slate-900"
                 >
-                  Sign In
+                  {t('sign_in')}
                 </Link>
                 <Link
                   to="/register"
                   onClick={() => setMenuOpen(false)}
                   className="btn-teal w-full text-center py-2.5 text-sm"
                 >
-                  Register
+                  {t('register')}
                 </Link>
               </div>
             )}

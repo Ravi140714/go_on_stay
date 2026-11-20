@@ -9,6 +9,7 @@ import {
 import api from '../services/api';
 import { hotelService, wishlistService } from '../services';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import VoiceSearchButton from '../components/VoiceSearchButton';
 import HotelMapView from '../components/HotelMapView';
 import CategoryTabs from '../components/CategoryTabs';
@@ -211,6 +212,7 @@ const HotelSearch = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, showToast } = useAuth();
+  const { t } = useLanguage();
 
   const getTodayStr = () => {
     const d = new Date();
@@ -690,7 +692,7 @@ const HotelSearch = () => {
                   title="Switch to List View"
                 >
                   <LayoutGrid className={`w-3.5 h-3.5 ${viewMode === 'list' ? 'text-white' : 'text-[#475569]'}`} />
-                  <span>List View</span>
+                  <span>{t('list_view')}</span>
                 </button>
                 <button
                   type="button"
@@ -702,7 +704,7 @@ const HotelSearch = () => {
                   title="Switch to Map View"
                 >
                   <Map className={`w-3.5 h-3.5 ${viewMode === 'map' ? 'text-white' : 'text-[#475569]'}`} />
-                  <span>Map View</span>
+                  <span>{t('map_view')}</span>
                 </button>
               </div>
 
@@ -713,30 +715,30 @@ const HotelSearch = () => {
                 className="py-2 px-3.5 rounded-full border border-[#E2E8F0] bg-white hover:bg-[#F8FAFC] text-[#475569] hover:text-[#0F172A] transition-all font-black text-xs flex items-center gap-2 shadow-2xs hover:shadow-xs cursor-pointer shrink-0"
               >
                 <SlidersHorizontal className="w-3.5 h-3.5 text-[#0284C7]" />
-                <span>Filters</span>
+                <span>{t('filters')}</span>
                 {activeFiltersCount > 0 ? (
                   <span className="w-5 h-5 rounded-full bg-[#0284C7] text-white text-[10px] font-black flex items-center justify-center">
                     {activeFiltersCount}
                   </span>
                 ) : (
-                  <span className="text-[10px] text-slate-400 font-bold uppercase">All</span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">{t('all')}</span>
                 )}
               </button>
 
               {/* Sort Dropdown */}
               <div className="flex items-center gap-2 text-xs font-extrabold shrink-0">
                 <span className="text-slate-500 hidden sm:flex items-center gap-1 shrink-0">
-                  <ArrowUpDown className="w-3.5 h-3.5 text-rose-600" /> Sort By:
+                  <ArrowUpDown className="w-3.5 h-3.5 text-rose-600" /> {t('sort_by')}:
                 </span>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
                   className="w-full sm:w-auto px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl font-extrabold text-xs text-slate-900 focus:border-rose-600 outline-none cursor-pointer"
                 >
-                  <option value="recommended">Recommended</option>
-                  <option value="price_low">Price: Low to High</option>
-                  <option value="price_high">Price: High to Low</option>
-                  <option value="rating">Star Rating: High to Low</option>
+                  <option value="recommended">{t('sort_recommended')}</option>
+                  <option value="price_low">{t('sort_price_low_high')}</option>
+                  <option value="price_high">{t('sort_price_high_low')}</option>
+                  <option value="rating">{t('sort_rating_high_low')}</option>
                 </select>
               </div>
             </div>
@@ -762,13 +764,13 @@ const HotelSearch = () => {
                 onClick={handleResetFilters}
                 className="btn-rose px-5 py-2.5 text-xs font-extrabold uppercase rounded-xl"
               >
-                Reset All Filters
+                {t('clear_filters')}
               </button>
               <button
                 onClick={() => handleQuickCitySelect('')}
                 className="btn-secondary px-5 py-2.5 text-xs font-extrabold uppercase rounded-xl"
               >
-                View All Cities
+                {t('view_all_hotels')}
               </button>
             </div>
           </div>
@@ -881,10 +883,10 @@ const HotelSearch = () => {
                   {/* Pricing & View Rooms CTA */}
                   <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div>
-                      <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Starts From</p>
+                      <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">{t('price_from')}</p>
                       <div className="flex items-baseline gap-1">
                         <span className="text-2xl font-black text-rose-600">₹{(hotel.starting_price || 2500).toLocaleString()}</span>
-                        <span className="text-xs text-slate-500 font-bold">/ night</span>
+                        <span className="text-xs text-slate-500 font-bold">/ {t('night')}</span>
                       </div>
                     </div>
 
@@ -892,7 +894,7 @@ const HotelSearch = () => {
                       to={`/hotels/${hotel.id}?check_in=${checkIn}&check_out=${checkOut}&rooms=${rooms}&guests=${guests}`}
                       className="btn-rose w-full sm:w-auto py-2.5 sm:py-3 px-5 sm:px-6 text-xs uppercase tracking-wider font-extrabold shadow-md shadow-rose-600/25 justify-center text-center"
                     >
-                      View Rooms & Book
+                      {t('view_details')}
                     </Link>
                   </div>
 
@@ -925,7 +927,7 @@ const HotelSearch = () => {
             <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal className="w-5 h-5 text-rose-600" />
-                <h3 className="text-base font-black text-slate-900">Filter Stays & Hotels</h3>
+                <h3 className="text-base font-black text-slate-900">{t('filters')}</h3>
                 {activeFiltersCount > 0 && (
                   <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center">
                     {activeFiltersCount}
@@ -947,7 +949,7 @@ const HotelSearch = () => {
               {/* 1. Destination Search Box */}
               <div className="space-y-2">
                 <label className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                  <MapPin className="w-4 h-4 text-rose-600" /> Destination City
+                  <MapPin className="w-4 h-4 text-rose-600" /> {t('location')}
                 </label>
                 <form onSubmit={(e) => { handleCitySearchSubmit(e); }} className="flex gap-2 items-center">
                   <div className="relative flex-1">
@@ -955,7 +957,7 @@ const HotelSearch = () => {
                       type="text"
                       value={searchCityInput}
                       onChange={(e) => setSearchCityInput(e.target.value)}
-                      placeholder="Search city (e.g. Goa, Ahmedabad)..."
+                      placeholder={t('search_destinations')}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 focus:bg-white pr-9"
                     />
                     <div className="absolute right-1 top-1/2 -translate-y-1/2">
@@ -983,7 +985,7 @@ const HotelSearch = () => {
               {/* Quick Destination Pills */}
               <div className="space-y-2">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
-                  Popular Destinations
+                  {t('popular_destinations')}
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {quickCities.map((cityObj) => {
@@ -1008,7 +1010,7 @@ const HotelSearch = () => {
               {/* 2. Price Range Filter */}
               <div className="space-y-2 pt-4 border-t border-slate-100">
                 <div className="flex items-center justify-between text-xs font-black">
-                  <span className="text-slate-800 uppercase tracking-wider text-xs">Max Price / Night</span>
+                  <span className="text-slate-800 uppercase tracking-wider text-xs">{t('price_range')}</span>
                   <span className="text-rose-600 font-extrabold text-sm">₹{priceMax.toLocaleString()}</span>
                 </div>
                 <input
@@ -1029,7 +1031,7 @@ const HotelSearch = () => {
               {/* 3. Star Rating Filter */}
               <div className="space-y-3 pt-4 border-t border-slate-100">
                 <label className="block text-xs font-black uppercase tracking-wider text-slate-800">
-                  Star Rating
+                  {t('star_rating')}
                 </label>
                 <div className="space-y-2.5">
                   {[5, 4, 3].map((star) => (
@@ -1056,7 +1058,7 @@ const HotelSearch = () => {
               {/* 4. Booking Perks & Options */}
               <div className="space-y-3 pt-4 border-t border-slate-100">
                 <label className="block text-xs font-black uppercase tracking-wider text-slate-800">
-                  Booking Perks
+                  {t('services')}
                 </label>
                 <div className="space-y-2.5">
                   <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer hover:text-slate-900">
@@ -1067,7 +1069,7 @@ const HotelSearch = () => {
                       className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 accent-rose-600 cursor-pointer"
                     />
                     <span className="flex items-center gap-1.5 text-slate-800 font-bold">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Free Cancellation
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" /> {t('free_cancellation')}
                     </span>
                   </label>
 
@@ -1079,7 +1081,7 @@ const HotelSearch = () => {
                       className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 accent-rose-600 cursor-pointer"
                     />
                     <span className="flex items-center gap-1.5 text-slate-800 font-bold">
-                      <Utensils className="w-4 h-4 text-amber-600" /> Breakfast Included
+                      <Utensils className="w-4 h-4 text-amber-600" /> {t('breakfast_included')}
                     </span>
                   </label>
                 </div>
@@ -1088,7 +1090,7 @@ const HotelSearch = () => {
               {/* 5. Amenities Filter */}
               <div className="space-y-3 pt-4 border-t border-slate-100">
                 <label className="block text-xs font-black uppercase tracking-wider text-slate-800">
-                  Amenities
+                  {t('amenities')}
                 </label>
                 <div className="space-y-2.5">
                   {availableAmenities.map((amenity) => (
@@ -1114,14 +1116,14 @@ const HotelSearch = () => {
                 onClick={handleResetFilters}
                 className="btn-secondary px-4 py-2.5 text-xs font-black cursor-pointer flex items-center gap-1.5"
               >
-                <RotateCcw className="w-3.5 h-3.5" /> Clear All
+                <RotateCcw className="w-3.5 h-3.5" /> {t('clear_all')}
               </button>
               <button
                 type="button"
                 onClick={() => setShowFilterModal(false)}
                 className="btn-rose py-3 px-6 text-xs uppercase font-black rounded-xl shadow-md flex-grow text-center cursor-pointer"
               >
-                Show {sortedHotels.length} Stays
+                {t('apply_filters')}
               </button>
             </div>
 

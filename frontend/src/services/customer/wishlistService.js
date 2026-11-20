@@ -15,6 +15,9 @@ export const wishlistService = {
 
   toggleWishlist: async (hotelId) => {
     const response = await apiClient.post(ENDPOINTS.WISHLIST.TOGGLE(hotelId));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wishlist:updated', { detail: response.data }));
+    }
     return response.data;
   },
 };

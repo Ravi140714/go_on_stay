@@ -1,226 +1,92 @@
-import React, { useState, useEffect } from 'react';
-import {
-  UserCheck, UserX, Clock, Search, CalendarCheck, Hotel, CheckCircle2, AlertCircle, Building2
-} from 'lucide-react';
-import api from '../../services/api';
-import { ownerBookingService } from '../../services';
+/**
+ * Staff Dashboard Dispatcher
+ * 
+ * Dynamically resolves the authenticated Staff member's assigned department
+ * from the authoritative backend profile and renders ONLY their assigned workspace.
+ * Prevents flashing or loading unauthorized modules.
+ */
+
+import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { formatDisplayDate } from '../../utils/dateUtils';
-import Pagination from '../../components/Pagination';
+import { useStaffDepartment } from '../../context/StaffDepartmentContext';
+import { STAFF_DEPARTMENTS, normalizeDepartment } from '../../config/staffDepartments';
 
-const StaffDashboard = () => {
-  const { user, showToast } = useAuth();
+// Department Portals
+import ReservationPortal from './departments/ReservationPortal';
+import CustomerSupportPortal from './departments/CustomerSupportPortal';
+import RefundsClaimsPortal from './departments/RefundsClaimsPortal';
+import PayoutsEscrowPortal from './departments/PayoutsEscrowPortal';
+import HotelVerificationPortal from './departments/HotelVerificationPortal';
 
-  const [bookings, setBookings] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
+export const StaffDashboard = () => {
+  const { user, loading: authLoading } = useAuth();
+  const { department, loading: deptLoading, error } = useStaffDepartment();
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    fetchStaffBookings();
-  }, []);
-
-  const fetchStaffBookings = async () => {
-    setLoading(true);
-    try {
-      const data = await ownerBookingService.getOwnerBookings();
-      setBookings(data.results || data);
-    } catch (err) {
-      console.error('Failed to load staff bookings:', err);
-      showToast('Failed to load booking reservations.', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCheckIn = async (bookingId) => {
-    try {
-      const data = await ownerBookingService.staffCheckIn(bookingId);
-      showToast(data.message || 'Guest checked in successfully!');
-      fetchStaffBookings();
-    } catch (err) {
-      const msg = err.response?.data?.error || 'Check-in failed.';
-      showToast(msg, 'error');
-    }
-  };
-
-  const handleCheckOut = async (bookingId) => {
-    try {
-      const data = await ownerBookingService.staffCheckOut(bookingId);
-      showToast(data.message || 'Guest checked out successfully!');
-      fetchStaffBookings();
-    } catch (err) {
-      const msg = err.response?.data?.error || 'Check-out failed.';
-      showToast(msg, 'error');
-    }
-  };
-
-  const handleNoShow = async (bookingId) => {
-    if (!window.confirm('Mark this booking reservation as NO-SHOW?')) return;
-    try {
-      const data = await ownerBookingService.markNoShow(bookingId);
-      showToast(data.message || 'Booking marked as NO-SHOW.');
-      fetchStaffBookings();
-    } catch (err) {
-      const msg = err.response?.data?.error || 'Failed to update status.';
-      showToast(msg, 'error');
-    }
-  };
-
-  const filteredBookings = bookings.filter((b) => {
-    const q = searchQuery.toLowerCase();
-    const bId = b.id.toString();
-    const guest = (b.guest_name || '').toLowerCase();
-    const roomNums = (b.room_number || '').toLowerCase();
-    const roomCategory = (b.room_details?.title || '').toLowerCase();
-    return bId.includes(q) || guest.includes(q) || roomNums.includes(q) || roomCategory.includes(q);
-  });
-
-  return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen py-10 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 border border-sky-200 text-sky-800 text-xs font-bold uppercase tracking-wider mb-2">
-              <Hotel className="w-3.5 h-3.5 text-sky-600" /> Front Desk Staff Console
-            </div>
-            <h1 className="text-3xl font-black text-slate-900">Hotel Staff Desk</h1>
-            <p className="text-xs text-slate-500 font-semibold">Manage real-time guest check-ins, check-outs, room allocation status, and no-shows</p>
-          </div>
-        </div>
-
-        {/* Search & Filter Bar */}
-        <div className="card-white p-4 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="relative w-full sm:w-96">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by Booking ID, Guest Name, Room Number..."
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold focus:border-sky-600 outline-none"
-            />
-          </div>
-
-          <div className="text-xs font-bold text-slate-500">
-            Showing {filteredBookings.length} of {bookings.length} reservations
-          </div>
-        </div>
-
-        {/* Bookings Table */}
-        {loading ? (
-          <div className="text-center py-20 card-white">
-            <div className="w-8 h-8 border-4 border-sky-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-            <p className="text-xs font-bold text-slate-500">Loading hotel desk reservations...</p>
-          </div>
-        ) : (
-          <div className="card-white overflow-hidden border border-slate-200 shadow-md">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 text-slate-700 font-extrabold uppercase tracking-wider border-b border-slate-200">
-                  <tr>
-                    <th className="p-4">Booking Code</th>
-                    <th className="p-4">Guest Name</th>
-                    <th className="p-4">Hotel Property</th>
-                    <th className="p-4">Room Number(s)</th>
-                    <th className="p-4">Stay Dates</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4 text-right">Desk Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-semibold">
-                  {filteredBookings.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="p-8 text-center text-slate-400 font-bold">No reservations found matching search query.</td>
-                    </tr>
-                  ) : (
-                    filteredBookings.slice((currentPage - 1) * 10, currentPage * 10).map((b) => (
-                      <tr key={b.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-4 font-mono font-bold text-slate-900">#{b.id}</td>
-                        <td className="p-4">
-                          <div className="font-extrabold text-slate-900">{b.guest_name || `User #${b.user}`}</div>
-                          <span className="text-[10px] text-slate-400 font-mono">{b.guest_phone || 'No phone'}</span>
-                        </td>
-                        <td className="p-4 font-extrabold text-slate-900">{b.hotel_details?.name}</td>
-                        <td className="p-4">
-                          <div className="font-extrabold text-teal-800">{b.room_details?.title || `Room #${b.room}`}</div>
-                          <div className="mt-1 inline-flex items-center gap-1 bg-sky-50 border border-sky-200 text-sky-800 px-2 py-0.5 rounded text-[11px] font-mono font-bold">
-                            <span>Units: {b.room_number || 'Room 101'}</span>
-                          </div>
-                        </td>
-                        <td className="p-4 text-slate-700 whitespace-nowrap min-w-[170px] font-medium text-xs">
-  {formatDisplayDate(b.check_in)} <span className="text-slate-400 font-normal">→</span> {formatDisplayDate(b.check_out)}
-</td>
-                        <td className="p-4">
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
-                            b.booking_status === 'CONFIRMED' ? 'bg-sky-50 text-sky-800 border border-sky-200' :
-                            b.booking_status === 'CHECKED_IN' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
-                            b.booking_status === 'CHECKED_OUT' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
-                            b.booking_status === 'NO_SHOW' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                            'bg-amber-50 text-amber-800 border border-amber-200'
-                          }`}>
-                            {b.booking_status}
-                          </span>
-                        </td>
-                        <td className="p-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {b.booking_status === 'CONFIRMED' && (
-                              <>
-                                <button
-                                  onClick={() => handleCheckIn(b.id)}
-                                  className="py-1 px-3 rounded-lg bg-emerald-600 text-white font-extrabold text-[11px] hover:bg-emerald-700 transition-colors flex items-center gap-1"
-                                >
-                                  <UserCheck className="w-3.5 h-3.5" /> Check-In
-                                </button>
-
-                                <button
-                                  onClick={() => handleNoShow(b.id)}
-                                  className="py-1 px-2.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white border border-rose-200 font-extrabold text-[11px] transition-colors"
-                                >
-                                  No-Show
-                                </button>
-                              </>
-                            )}
-
-                            {b.booking_status === 'CHECKED_IN' && (
-                              <button
-                                onClick={() => handleCheckOut(b.id)}
-                                className="py-1 px-3 rounded-lg bg-slate-900 text-white font-extrabold text-[11px] hover:bg-slate-800 transition-colors flex items-center gap-1"
-                              >
-                                <UserX className="w-3.5 h-3.5" /> Check-Out
-                              </button>
-                            )}
-
-                            {b.booking_status === 'CHECKED_OUT' && (
-                              <span className="text-[10px] font-bold text-slate-400 italic">Stay Completed</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              currentPage={currentPage}
-              totalItems={filteredBookings.length}
-              itemsPerPage={10}
-              onPageChange={setCurrentPage}
-              color="teal"
-            />
-          </div>
-        )}
-
+  // 1. Loading screen - strictly prevents any data leakage
+  if (authLoading || deptLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white select-none">
+        <div className="w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-sm font-bold tracking-wide text-slate-300">Resolving Assigned Staff Portal...</p>
+        <p className="text-xs text-slate-500 mt-1">Connecting to authenticated department workspace</p>
       </div>
-    </div>
-  );
+    );
+  }
+
+  // 2. Not authenticated -> Login
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // 3. Admin / Super Admin Default to Reservation or Hotel Verification
+  if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN' || user.is_superuser) {
+    return <ReservationPortal />;
+  }
+
+  // 4. Resolve Canonical Department
+  const canonicalDept = normalizeDepartment(department);
+
+  switch (canonicalDept) {
+    case STAFF_DEPARTMENTS.RESERVATION:
+      return <ReservationPortal />;
+
+    case STAFF_DEPARTMENTS.CUSTOMER_SUPPORT:
+      return <CustomerSupportPortal />;
+
+    case STAFF_DEPARTMENTS.REFUNDS_AND_CLAIMS:
+      return <RefundsClaimsPortal />;
+
+    case STAFF_DEPARTMENTS.PAYOUT_AND_ESCROW:
+      return <PayoutsEscrowPortal />;
+
+    case STAFF_DEPARTMENTS.HOTEL_VERIFICATION:
+      return <HotelVerificationPortal />;
+
+    default:
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+          <div className="max-w-md bg-white border border-slate-200 rounded-2xl p-8 shadow-xl space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto font-black text-xl">
+              ⚠️
+            </div>
+            <h2 className="text-lg font-black text-slate-900">Pending Department Assignment</h2>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Your staff account is authenticated, but the Administrator has not yet assigned an operational department to your profile.
+            </p>
+            <div className="text-[11px] font-mono bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-slate-700">
+              Employee ID: {user.employee_id || 'Pending'} • Account: {user.username}
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              Check Again
+            </button>
+          </div>
+        </div>
+      );
+  }
 };
 
 export default StaffDashboard;

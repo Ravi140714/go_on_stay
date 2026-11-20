@@ -6,7 +6,7 @@ import {
   Clock, User, Check, X, ShieldAlert, DoorClosed, Menu, CreditCard, Settings, Save, Landmark, Bell, Lock, ShieldCheck,
   TrendingUp, BarChart3, PieChart, ArrowUpRight, ArrowDownRight, Percent, Award, Calendar as CalendarIcon,
   Eye, Phone, Mail, FileText, Search, ExternalLink, RotateCcw, MessageSquare, CornerDownRight,
-  UserX, Download
+  UserX, Download, Globe, Languages
 } from 'lucide-react';
 import api from '../../services/api';
 import {
@@ -21,6 +21,7 @@ import {
   supportService
 } from '../../services';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { formatDisplayDate } from '../../utils/dateUtils';
 import Sidebar from '../../components/Sidebar';
 import NotificationBell from '../../components/NotificationBell';
@@ -37,6 +38,7 @@ const TAB_TO_SLUG = {
   TICKETS: 'tickets',
   SETTINGS: 'profile',
   SETTING_PROFILE: 'profile',
+  SETTING_LANGUAGE: 'language',
   SETTING_PAYOUT: 'payout',
   SETTING_RAZORPAY: 'payout',
   SETTING_NOTIFICATIONS: 'notifications',
@@ -59,6 +61,7 @@ const SLUG_TO_TAB = {
   support: 'TICKETS',
   profile: 'SETTING_PROFILE',
   settings: 'SETTING_PROFILE',
+  language: 'SETTING_LANGUAGE',
   payout: 'SETTING_PAYOUT',
   bank: 'SETTING_PAYOUT',
   notifications: 'SETTING_NOTIFICATIONS',
@@ -66,6 +69,7 @@ const SLUG_TO_TAB = {
 
 const OwnerDashboard = () => {
   const { user, showToast } = useAuth();
+  const { currentLang, changeLanguage, t } = useLanguage();
   const navigate = useNavigate();
   const { subTab } = useParams();
 
@@ -1094,6 +1098,7 @@ const OwnerDashboard = () => {
       icon: Settings,
       items: [
         { id: 'SETTING_PROFILE', label: 'Personal Profile', icon: User },
+        { id: 'SETTING_LANGUAGE', label: 'Language Settings', icon: Globe },
         { id: 'SETTING_PAYOUT', label: 'Bank & Payout Destination', icon: Landmark, badge: payoutAccount?.is_verified ? 'Verified' : 'Required' },
         { id: 'SETTING_NOTIFICATIONS', label: 'Notification Alerts', icon: Bell, badge: unreadNotificationsCount > 0 ? `${unreadNotificationsCount} New` : null },
       ]
@@ -2873,7 +2878,19 @@ const OwnerDashboard = () => {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <User className="w-3.5 h-3.5" /> Personal Profile
+                  <User className="w-3.5 h-3.5" /> {t('personal_profile')}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('SETTING_LANGUAGE')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                    activeTab === 'SETTING_LANGUAGE'
+                      ? 'bg-white text-rose-700 shadow-xs font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5" /> {t('language_settings')}
                 </button>
 
                 <button
@@ -2885,7 +2902,7 @@ const OwnerDashboard = () => {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Lock className="w-3.5 h-3.5 text-rose-600" /> Bank & Payout
+                  <Lock className="w-3.5 h-3.5 text-rose-600" /> {t('bank_payout')}
                 </button>
 
                 <button
@@ -2897,42 +2914,89 @@ const OwnerDashboard = () => {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Bell className="w-3.5 h-3.5" /> Notifications
+                  <Bell className="w-3.5 h-3.5" /> {t('notification_alerts')}
                 </button>
               </div>
             </div>
 
             <form onSubmit={handleSaveSettings} className="space-y-6">
+              {/* Dedicated Language Settings Section */}
+              {activeTab === 'SETTING_LANGUAGE' && (
+                <div className="card-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5 animate-fade-in">
+                  <div className="border-b border-slate-100 pb-3">
+                    <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-rose-600" /> {t('language_settings')}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium mt-1">
+                      {t('language_desc')}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {[
+                      { code: 'en', name: 'English', native: 'English', desc: 'Default Language' },
+                      { code: 'hi', name: 'Hindi', native: 'हिंदी', desc: 'भारत (India)' },
+                      { code: 'gu', name: 'Gujarati', native: 'ગુજરાતી', desc: 'ગુજરાત (Gujarat)' }
+                    ].map((lang) => {
+                      const isSelected = currentLang === lang.code;
+                      return (
+                        <div
+                          key={lang.code}
+                          onClick={() => changeLanguage(lang.code)}
+                          className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                            isSelected
+                              ? 'border-rose-600 bg-rose-50/60 ring-2 ring-rose-600/20 shadow-sm'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="space-y-1">
+                            <span className="text-base font-black text-slate-900 block">{lang.native}</span>
+                            <span className="text-xs font-bold text-slate-500 block">{lang.name} • {lang.desc}</span>
+                          </div>
+                          {isSelected ? (
+                            <div className="w-7 h-7 rounded-full bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                              <Check className="w-4 h-4 stroke-[3]" />
+                            </div>
+                          ) : (
+                            <div className="w-7 h-7 rounded-full border-2 border-slate-300 shrink-0" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* 1. Personal Host Information Sub-Section */}
               {(activeTab === 'SETTING_PROFILE' || activeTab === 'SETTINGS') && (
               <div className="card-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
                 <h3 className="text-base font-black text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
-                  <User className="w-4 h-4 text-rose-600" /> Personal Host Profile Details
+                  <User className="w-4 h-4 text-rose-600" /> {t('profile_info')}
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
-                      First Name
+                      {t('first_name')}
                     </label>
                     <input
                       type="text"
                       value={profileForm.first_name}
                       onChange={(e) => setProfileForm({ ...profileForm, first_name: e.target.value })}
-                      placeholder="First Name"
+                      placeholder={t('first_name')}
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 focus:bg-white"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
-                      Last Name
+                      {t('last_name')}
                     </label>
                     <input
                       type="text"
                       value={profileForm.last_name}
                       onChange={(e) => setProfileForm({ ...profileForm, last_name: e.target.value })}
-                      placeholder="Last Name"
+                      placeholder={t('last_name')}
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-rose-600 focus:bg-white"
                     />
                   </div>
@@ -2941,7 +3005,7 @@ const OwnerDashboard = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
-                      Email Address (Account Login)
+                      {t('email_address')}
                     </label>
                     <input
                       type="email"
@@ -2953,7 +3017,7 @@ const OwnerDashboard = () => {
 
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
-                      Mobile / WhatsApp Number
+                      {t('mobile_number')}
                     </label>
                     <input
                       type="text"
@@ -2967,7 +3031,7 @@ const OwnerDashboard = () => {
 
                 <div>
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
-                    Host Bio & Hospitality Experience
+                    {t('bio')}
                   </label>
                   <textarea
                     rows={2}
@@ -3140,22 +3204,29 @@ const OwnerDashboard = () => {
               </div>
               )}
 
-              {/* Submit Save Button */}
-              <div className="flex justify-end pt-2">
+              {/* Submit Save / Cancel Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => fetchOwnerProfile()}
+                  className="px-6 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-black text-slate-700 transition-all cursor-pointer"
+                >
+                  {t('cancel')}
+                </button>
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="btn-rose py-3.5 px-8 text-xs uppercase tracking-wider font-extrabold rounded-xl shadow-md shadow-rose-600/25 flex items-center gap-2 cursor-pointer"
+                  className="btn-rose py-3 px-8 text-xs uppercase tracking-wider font-extrabold rounded-xl shadow-md shadow-rose-600/25 flex items-center gap-2 cursor-pointer"
                 >
                   {savingSettings ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Saving Settings...</span>
+                      <span>{t('loading')}</span>
                     </>
                   ) : (
                     <>
                       <Save className="w-4 h-4 stroke-[2.5]" />
-                      <span>Save All Portal Settings</span>
+                      <span>{t('save_changes')}</span>
                     </>
                   )}
                 </button>

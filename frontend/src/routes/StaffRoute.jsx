@@ -10,7 +10,7 @@ import { ROLES } from '../config/roleConfig';
 
 export const StaffRoute = ({ children }) => {
   return (
-    <ProtectedRoute allowedRoles={[ROLES.HOTEL_STAFF, ROLES.HOTEL_OWNER, ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
+    <ProtectedRoute allowedRoles={[ROLES.HOTEL_STAFF, 'STAFF', ROLES.HOTEL_OWNER, ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
       {children}
     </ProtectedRoute>
   );
