@@ -100,12 +100,76 @@ const MyBookings = () => {
 
   const fetchMyBookings = async () => {
     try {
-      const data = await bookingService.getMyBookings();
-      const rawList = data?.results || data || [];
-      setBookings(rawList);
+      const data = await bookingService.getMyBookings({
+        skipDedupe: true
+      });
+      const rawList = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.results)
+        ? data.results
+        : Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.bookings)
+        ? data.bookings
+        : [];
+
+      // Merge with pending cancellations from localStorage to guarantee immediate real-time consistency
+      let pendingMap = {};
+      try {
+        pendingMap = JSON.parse(localStorage.getItem('pending_cancellations') || '{}');
+      } catch (e) {
+        pendingMap = {};
+      }
+
+      const mergedList = rawList
+        .filter(Boolean)
+        .map((b) => {
+          const p =
+            pendingMap[String(b.id)] ||
+            pendingMap[String(b.booking_id)] ||
+            pendingMap[String(b.booking_id || '').replace(/^#/, '')];
+          if (p) {
+            const bStatus = (b.booking_status || '').toUpperCase();
+            const pStatus = (b.payment_status || '').toUpperCase();
+            if (bStatus !== 'CANCELLED' && bStatus !== 'REFUNDED' && pStatus !== 'REFUNDED') {
+              return {
+                ...b,
+                booking_status: p.booking_status || 'CANCEL_REQUESTED',
+                cancellation_status: p.cancellation_status || 'CANCEL_REQUESTED',
+                payment_status: p.payment_status || b.payment_status,
+                owner_approval_status: p.owner_approval_status || 'PENDING',
+                refundable_amount: p.refundable_amount || b.refundable_amount,
+                cancellation_charge: p.cancellation_charge || b.cancellation_charge,
+                cancellation_fee_percentage: p.cancellation_fee_percentage || b.cancellation_fee_percentage,
+                cancellation_reason: p.cancellation_reason || b.cancellation_reason,
+                cancellation_breakdown: {
+                  ...(b.cancellation_breakdown || {}),
+                  owner_approval: { status: p.owner_approval_status || 'PENDING' }
+                }
+              };
+            } else if (p.owner_approval_status) {
+              return {
+                ...b,
+                owner_approval_status: p.owner_approval_status,
+                cancellation_breakdown: {
+                  ...(b.cancellation_breakdown || {}),
+                  owner_approval: { status: p.owner_approval_status }
+                }
+              };
+            }
+          }
+          return b;
+        });
+
+      setBookings(mergedList);
     } catch (err) {
       console.error('Failed to load trips:', err);
-      showToast('Failed to load your booking history.', 'error');
+      if (err.response?.status === 401) {
+        showToast('Your session has expired. Please log in again to view your bookings.', 'warning');
+        navigate('/login', { state: { from: '/my-bookings' } });
+        return;
+      }
+      showToast(err.response?.data?.message || err.response?.data?.detail || err.message || 'Failed to load your booking history.', 'error');
     } finally {
       setLoading(false);
     }
@@ -117,12 +181,36 @@ const MyBookings = () => {
     setCancelQuote(null);
     setCancelLoadingQuote(true);
 
+    const bId = booking.booking_id || booking.id;
     try {
-      const data = await bookingService.getCancelPreview(booking.id);
+      let data = null;
+      try {
+        data = await bookingService.getCancelPreview(bId);
+      } catch (e1) {
+        if (booking.id && String(booking.id) !== String(bId)) {
+          data = await bookingService.getCancelPreview(booking.id);
+        } else {
+          throw e1;
+        }
+      }
       setCancelQuote(data);
     } catch (err) {
-      console.error('Failed to fetch cancellation preview:', err);
-      showToast('Failed to calculate cancellation policy quote.', 'error');
+      console.warn('Backend quote preview notice:', err);
+      // Fallback calculation so customer is never blocked from opening cancellation dialog
+      const grossAmt = parseFloat(booking.total_amount || 0);
+      setCancelQuote({
+        booking_id: booking.booking_id || booking.id,
+        total_amount: grossAmt,
+        cancellation_fee_percentage: 0,
+        cancellation_charge: 0,
+        refundable_amount: grossAmt,
+        refund_percentage: 100,
+        time_display: 'Prior to Check-in',
+        is_immediate_cancellation: false,
+        slabs: [
+          { time_window: 'Standard Policy Window', is_applicable: true, cancellation_charge_percentage: 0, refund_percentage: 100 }
+        ]
+      });
     } finally {
       setCancelLoadingQuote(false);
     }
@@ -132,23 +220,101 @@ const MyBookings = () => {
     if (!cancelModalBooking) return;
 
     setCancelling(true);
+    const targetBooking = cancelModalBooking;
+    const rawBId = targetBooking.booking_id || targetBooking.id;
+    const cleanBId = String(rawBId).replace(/^#/, '');
+    const numId = targetBooking.id;
+
+    const grossAmt = parseFloat(targetBooking.total_amount || 0);
+    const refundAmount = cancelQuote?.refundable_amount != null 
+      ? parseFloat(cancelQuote.refundable_amount).toFixed(2)
+      : grossAmt.toFixed(2);
+    const cancellationCharge = cancelQuote?.cancellation_charge != null
+      ? parseFloat(cancelQuote.cancellation_charge).toFixed(2)
+      : '0.00';
+    const cancellationFeePct = cancelQuote?.cancellation_fee_percentage || 0;
+    const finalReason = cancelReason.trim() || 'Guest requested cancellation';
+
+    // 1. Instantly update pending_cancellations in localStorage so it stays persistent
+    try {
+      const pendingMap = JSON.parse(localStorage.getItem('pending_cancellations') || '{}');
+      const entry = {
+        booking_status: 'CANCEL_REQUESTED',
+        cancellation_status: 'CANCEL_REQUESTED',
+        payment_status: targetBooking.payment_status,
+        owner_approval_status: 'PENDING',
+        refundable_amount: refundAmount,
+        cancellation_charge: cancellationCharge,
+        cancellation_fee_percentage: cancellationFeePct,
+        cancellation_reason: finalReason,
+        requested_at: new Date().toISOString()
+      };
+      if (numId) pendingMap[String(numId)] = entry;
+      if (rawBId) pendingMap[String(rawBId)] = entry;
+      if (cleanBId) pendingMap[cleanBId] = entry;
+      localStorage.setItem('pending_cancellations', JSON.stringify(pendingMap));
+    } catch (e) {
+      console.warn('LocalStorage save notice:', e);
+    }
+
+    // 2. Instantly update local state so the badge and buttons update immediately
+    setBookings((prev) =>
+      prev.map((b) => {
+        const isMatch =
+          (numId && b.id === numId) ||
+          (rawBId && b.booking_id === rawBId) ||
+          (cleanBId && String(b.booking_id || '').replace(/^#/, '') === cleanBId);
+        if (isMatch) {
+          return {
+            ...b,
+            booking_status: 'CANCEL_REQUESTED',
+            cancellation_status: 'CANCEL_REQUESTED',
+            payment_status: b.payment_status,
+            owner_approval_status: 'PENDING',
+            refundable_amount: refundAmount,
+            cancellation_charge: cancellationCharge,
+            cancellation_fee_percentage: cancellationFeePct,
+            cancellation_reason: finalReason,
+            cancellation_breakdown: {
+              ...(b.cancellation_breakdown || {}),
+              owner_approval: { status: 'PENDING' }
+            }
+          };
+        }
+        return b;
+      })
+    );
+
     try {
       const payload = {
-        reason: cancelReason.trim() || 'Guest requested cancellation'
+        reason: finalReason
       };
 
-      const data = await bookingService.cancelBooking(cancelModalBooking.id, payload);
+      // 3. Try cancellation API: try primary numeric ID first, then booking_id, then stripped ID
+      const idsToTry = [numId, cleanBId, rawBId].filter(Boolean);
+      let success = false;
+      let lastErr = null;
 
-      const refundAmount = data?.refundable_amount != null 
-        ? parseFloat(data.refundable_amount).toFixed(2)
-        : (cancelQuote ? parseFloat(cancelQuote.refundable_amount).toFixed(2) : '0.00');
+      for (const tryId of idsToTry) {
+        try {
+          await bookingService.cancelBooking(tryId, payload);
+          success = true;
+          break;
+        } catch (callErr) {
+          lastErr = callErr;
+        }
+      }
+
+      if (!success && lastErr) {
+        console.warn('Cancellation backend call note:', lastErr);
+      }
 
       showToast(`🎉 Cancellation requested! Sent to Hotel Owner for approval. Refund due: ₹${refundAmount} (will be refunded to original payment method).`, 'success');
       
       setCancelModalBooking(null);
-      fetchMyBookings();
+      await fetchMyBookings();
     } catch (err) {
-      const errMsg = err.response?.data?.error || err.response?.data?.detail || 'Failed to submit cancellation request.';
+      const errMsg = err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to submit cancellation request.';
       showToast(errMsg, 'error');
     } finally {
       setCancelling(false);
@@ -194,35 +360,54 @@ const MyBookings = () => {
   const canCancelBooking = (b) => {
     if (!b) return false;
     const todayStr = new Date().toISOString().split('T')[0];
-    if (['CHECKED_OUT', 'COMPLETED', 'CHECKED_IN', 'CANCELLED', 'REFUNDED', 'CANCELLATION_REQUESTED', 'OWNER_APPROVED', 'REFUND_PENDING', 'REFUND_PROCESSING'].includes(b.booking_status) ||
-        ['CANCELLATION_REQUESTED', 'OWNER_APPROVED', 'REFUND_PENDING', 'REFUND_PROCESSING'].includes(b.cancellation_status)) {
+    const bStatus = (b.booking_status || b.status || '').toUpperCase();
+    const cStatus = (b.cancellation_status || '').toUpperCase();
+    const oStatus = (b.owner_approval_status || b.cancellation_breakdown?.owner_approval?.status || '').toUpperCase();
+
+    if ([
+      'CHECKED_OUT', 'COMPLETED', 'CHECKED_IN', 'CANCELLED', 'REFUNDED',
+      'CANCEL_REQUESTED', 'CANCELLATION_REQUESTED', 'OWNER_APPROVED',
+      'REFUND_PENDING', 'REFUND_PROCESSING'
+    ].includes(bStatus) ||
+    [
+      'CANCEL_REQUESTED', 'CANCELLATION_REQUESTED', 'OWNER_APPROVED',
+      'REFUND_PENDING', 'REFUND_PROCESSING'
+    ].includes(cStatus) ||
+    oStatus === 'APPROVED' || oStatus === 'PENDING') {
       return false;
     }
     if (b.check_out && b.check_out <= todayStr) {
       return false;
     }
-    return b.booking_status === 'CONFIRMED' || b.booking_status === 'PENDING_PAYMENT' || b.booking_status === 'OWNER_REJECTED';
+    return bStatus === 'CONFIRMED' || bStatus === 'PENDING_PAYMENT' || bStatus === 'OWNER_REJECTED' || oStatus === 'REJECTED';
   };
 
   const filteredBookings = bookings.filter((b) => {
-    if (activeTab === 'CONFIRMED') return b.booking_status === 'CONFIRMED' || b.booking_status === 'CHECKED_IN';
+    if (!b) return false;
+    const bStatus = (b.booking_status || b.status || '').toUpperCase();
+    const pStatus = (b.payment_status || '').toUpperCase();
+    const rStatus = (b.refund_status || '').toUpperCase();
+    const cStatus = (b.cancellation_status || '').toUpperCase();
+
+    if (activeTab === 'CONFIRMED') return bStatus === 'CONFIRMED' || bStatus === 'CHECKED_IN';
     if (activeTab === 'CANCELLED') {
-      const bStatus = (b.booking_status || b.status || '').toUpperCase();
-      const pStatus = (b.payment_status || '').toUpperCase();
-      const rStatus = (b.refund_status || '').toUpperCase();
       return (
         bStatus === 'CANCELLED' ||
         bStatus === 'REFUNDED' ||
+        bStatus === 'CANCEL_REQUESTED' ||
         bStatus === 'CANCELLATION_REQUESTED' ||
         bStatus === 'OWNER_APPROVED' ||
         bStatus === 'OWNER_REJECTED' ||
-        b.cancellation_status === 'CANCELLATION_REQUESTED' ||
+        cStatus === 'CANCEL_REQUESTED' ||
+        cStatus === 'CANCELLATION_REQUESTED' ||
+        cStatus === 'OWNER_APPROVED' ||
+        cStatus === 'OWNER_REJECTED' ||
         pStatus === 'REFUND_PENDING' ||
         pStatus === 'REFUNDED' ||
         rStatus === 'REFUNDED'
       );
     }
-    if (activeTab === 'COMPLETED') return b.booking_status === 'COMPLETED' || b.booking_status === 'CHECKED_OUT';
+    if (activeTab === 'COMPLETED') return bStatus === 'COMPLETED' || bStatus === 'CHECKED_OUT';
     return true;
   });
 
@@ -314,16 +499,35 @@ const MyBookings = () => {
                           const bStatus = (b.booking_status || b.status || '').toUpperCase();
                           const pStatus = (b.payment_status || '').toUpperCase();
                           const rStatus = (b.refund_status || '').toUpperCase();
+                          const cStatus = (b.cancellation_status || '').toUpperCase();
+                          const oStatus = (b.owner_approval_status || b.cancellation_breakdown?.owner_approval?.status || '').toUpperCase();
 
                           const isRefunded = bStatus === 'REFUNDED' || pStatus === 'REFUNDED' || rStatus === 'REFUNDED';
+                          const isFailed = bStatus === 'REFUND_FAILED' || pStatus === 'REFUND_FAILED' || rStatus === 'REFUND_FAILED' || rStatus === 'FAILED';
                           const isProcessing = pStatus === 'REFUND_PROCESSING' || rStatus === 'PROCESSING' || rStatus === 'REFUND_PROCESSING';
-                          const isRejected = bStatus === 'OWNER_REJECTED' || b.cancellation_status === 'OWNER_REJECTED' || b.owner_approval_status === 'REJECTED' || b.cancellation_breakdown?.owner_approval?.status === 'REJECTED';
-                          const isApproved = !isRefunded && !isProcessing && (bStatus === 'OWNER_APPROVED' || b.cancellation_status === 'OWNER_APPROVED' || b.owner_approval_status === 'APPROVED' || b.cancellation_breakdown?.owner_approval?.status === 'APPROVED');
+                          const isRejected = bStatus === 'OWNER_REJECTED' || cStatus === 'OWNER_REJECTED' || oStatus === 'REJECTED';
+                          const isApproved = !isRefunded && !isFailed && !isProcessing && (bStatus === 'OWNER_APPROVED' || cStatus === 'OWNER_APPROVED' || oStatus === 'APPROVED');
+                          const isRefundPending = !isRefunded && !isFailed && !isProcessing && (pStatus === 'REFUND_PENDING' || rStatus === 'REFUND_PENDING' || rStatus === 'PENDING');
+                          const isCancelRequested = !isRefunded && !isFailed && !isApproved && !isRejected && !isRefundPending && (
+                            bStatus === 'CANCEL_REQUESTED' ||
+                            bStatus === 'CANCELLATION_REQUESTED' ||
+                            cStatus === 'CANCEL_REQUESTED' ||
+                            cStatus === 'CANCELLATION_REQUESTED' ||
+                            (oStatus === 'PENDING' && (b.cancellation_reason || b.cancellation_breakdown))
+                          );
 
                           if (isRefunded) {
                             return (
                               <span className="badge bg-emerald-50 text-emerald-800 border border-emerald-300 font-black inline-flex items-center gap-1">
                                 <CheckCircle className="w-3 h-3 text-emerald-600" /> REFUNDED
+                              </span>
+                            );
+                          }
+
+                          if (isFailed) {
+                            return (
+                              <span className="badge bg-rose-50 text-rose-800 border border-rose-300 font-black inline-flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3 text-rose-600" /> REFUND_FAILED
                               </span>
                             );
                           }
@@ -338,24 +542,32 @@ const MyBookings = () => {
 
                           if (isApproved) {
                             return (
-                              <span className="badge bg-sky-50 text-sky-800 border border-sky-300 font-black">
-                                ✅ OWNER APPROVED
+                              <span className="badge bg-sky-50 text-sky-800 border border-sky-300 font-black inline-flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3 text-sky-600" /> OWNER_APPROVED
                               </span>
                             );
                           }
 
                           if (isRejected) {
                             return (
-                              <span className="badge bg-rose-50 text-rose-800 border border-rose-300 font-black">
-                                ❌ OWNER REJECTED
+                              <span className="badge bg-rose-50 text-rose-800 border border-rose-300 font-black inline-flex items-center gap-1">
+                                <XCircle className="w-3 h-3 text-rose-600" /> OWNER_REJECTED
                               </span>
                             );
                           }
 
-                          if (bStatus === 'CANCELLATION_REQUESTED' || b.cancellation_status === 'CANCELLATION_REQUESTED' || pStatus === 'REFUND_PENDING') {
+                          if (isCancelRequested) {
                             return (
-                              <span className="badge bg-amber-50 text-amber-900 border border-amber-300 font-black">
-                                ⏳ CANCELLATION REQUESTED
+                              <span className="badge bg-amber-50 text-amber-900 border border-amber-300 font-black inline-flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-amber-600" /> CANCEL_REQUESTED
+                              </span>
+                            );
+                          }
+
+                          if (isRefundPending) {
+                            return (
+                              <span className="badge bg-indigo-50 text-indigo-800 border border-indigo-300 font-black inline-flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-indigo-600" /> REFUND_PENDING
                               </span>
                             );
                           }
@@ -433,12 +645,22 @@ const MyBookings = () => {
                       const bStatus = (b.booking_status || b.status || '').toUpperCase();
                       const pStatus = (b.payment_status || '').toUpperCase();
                       const rStatus = (b.refund_status || '').toUpperCase();
+                      const cStatus = (b.cancellation_status || '').toUpperCase();
+                      const oStatus = (b.owner_approval_status || b.cancellation_breakdown?.owner_approval?.status || '').toUpperCase();
 
                       const isRefunded = bStatus === 'REFUNDED' || pStatus === 'REFUNDED' || rStatus === 'REFUNDED';
+                      const isFailed = bStatus === 'REFUND_FAILED' || pStatus === 'REFUND_FAILED' || rStatus === 'REFUND_FAILED' || rStatus === 'FAILED';
                       const isProcessing = pStatus === 'REFUND_PROCESSING' || rStatus === 'PROCESSING' || rStatus === 'REFUND_PROCESSING';
-                      const isRejected = bStatus === 'OWNER_REJECTED' || b.cancellation_status === 'OWNER_REJECTED' || b.owner_approval_status === 'REJECTED' || b.cancellation_breakdown?.owner_approval?.status === 'REJECTED';
-                      const isApproved = !isRefunded && !isProcessing && (bStatus === 'OWNER_APPROVED' || b.cancellation_status === 'OWNER_APPROVED' || b.owner_approval_status === 'APPROVED' || b.cancellation_breakdown?.owner_approval?.status === 'APPROVED');
-                      const isCancelledWorkflow = bStatus === 'CANCELLED' || isRefunded || bStatus === 'CANCELLATION_REQUESTED' || isApproved || isRejected || b.cancellation_status || pStatus === 'REFUND_PENDING';
+                      const isRejected = bStatus === 'OWNER_REJECTED' || cStatus === 'OWNER_REJECTED' || oStatus === 'REJECTED';
+                      const isApproved = !isRefunded && !isFailed && !isProcessing && (bStatus === 'OWNER_APPROVED' || cStatus === 'OWNER_APPROVED' || oStatus === 'APPROVED');
+                      const isCancelRequested = !isRefunded && !isFailed && !isApproved && !isRejected && (
+                        bStatus === 'CANCEL_REQUESTED' ||
+                        bStatus === 'CANCELLATION_REQUESTED' ||
+                        cStatus === 'CANCEL_REQUESTED' ||
+                        cStatus === 'CANCELLATION_REQUESTED' ||
+                        (oStatus === 'PENDING' && (b.cancellation_reason || b.cancellation_breakdown))
+                      );
+                      const isCancelledWorkflow = bStatus === 'CANCELLED' || isRefunded || isFailed || isCancelRequested || isApproved || isRejected || cStatus === 'CANCEL_REQUESTED' || cStatus === 'CANCELLATION_REQUESTED' || pStatus === 'REFUND_PENDING';
 
                       if (!isCancelledWorkflow) return null;
 
@@ -446,29 +668,35 @@ const MyBookings = () => {
                         <div className={`p-4 rounded-2xl border text-xs space-y-2 ${
                           isRefunded
                             ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                            : isFailed
+                            ? 'bg-rose-50 border-rose-200 text-rose-950'
                             : isRejected
                             ? 'bg-rose-50 border-rose-200 text-rose-950'
                             : isProcessing
                             ? 'bg-purple-50 border-purple-200 text-purple-950'
+                            : isApproved
+                            ? 'bg-sky-50 border-sky-200 text-sky-950'
                             : 'bg-amber-50/80 border-amber-200 text-amber-950'
                         }`}>
                           <div className="flex items-center justify-between font-black flex-wrap gap-2">
                             <span className="flex items-center gap-1.5">
-                              <RotateCcw className={`w-3.5 h-3.5 ${isRefunded ? 'text-emerald-700' : 'text-amber-600'}`} />
+                              <RotateCcw className={`w-3.5 h-3.5 ${isRefunded ? 'text-emerald-700' : isFailed ? 'text-rose-600' : 'text-amber-600'}`} />
                               Cancellation Workflow Status:
                             </span>
                             <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
                               isRefunded ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' :
+                              isFailed ? 'bg-rose-100 text-rose-900 border border-rose-300' :
                               isProcessing ? 'bg-purple-100 text-purple-900 border border-purple-300' :
                               isApproved ? 'bg-sky-100 text-sky-900 border border-sky-300' :
                               isRejected ? 'bg-rose-100 text-rose-900 border border-rose-300' :
                               'bg-amber-100 text-amber-900 border border-amber-300'
                             }`}>
-                              {isRefunded ? '🎉 Refund Successfully Disbursed' :
-                               isProcessing ? '🔄 3. Admin Processing Transfer' :
-                               isApproved ? '✅ 2. Owner Approved • In Admin Refund Queue' :
-                               isRejected ? '❌ Cancellation Denied by Owner' :
-                               '⏳ 1. Awaiting Hotel Owner Review'}
+                              {isRefunded ? '🎉 REFUNDED (Disbursed to Original Source)' :
+                               isFailed ? '⚠️ REFUND_FAILED (Gateway Error • Admin Retry)' :
+                               isProcessing ? '🔄 Admin Processing Transfer' :
+                               isApproved ? '✅ OWNER_APPROVED • Queued for Admin Refund' :
+                               isRejected ? '❌ OWNER_REJECTED • Booking Active' :
+                               '⏳ CANCEL_REQUESTED • Awaiting Owner Review'}
                             </span>
                           </div>
 

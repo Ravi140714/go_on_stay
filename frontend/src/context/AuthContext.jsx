@@ -8,20 +8,14 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
-    const sessionActive = sessionStorage.getItem('session_active');
-    if (!sessionActive) {
-      // Browser was closed or fresh session: clear stored tokens so previous account does not auto-login
-      localStorage.removeItem('user');
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+    try {
+      const savedUser = localStorage.getItem('user');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
       return null;
     }
-    const savedUser = localStorage.getItem('user');
-    return savedUser ? JSON.parse(savedUser) : null;
   });
   const [accessToken, setAccessToken] = useState(() => {
-    const sessionActive = sessionStorage.getItem('session_active');
-    if (!sessionActive) return null;
     return localStorage.getItem('accessToken') || null;
   });
   const [loading, setLoading] = useState(true);
@@ -69,8 +63,8 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('user', JSON.stringify(finalUser));
           }
         } catch (err) {
-          console.warn('Backend server unreachable or session expired. Clearing credentials:', err);
-          if (isMounted) {
+          console.warn('Profile fetch check:', err);
+          if (isMounted && err?.response?.status === 401) {
             setUser(null);
             setAccessToken(null);
             localStorage.removeItem('user');

@@ -21,9 +21,18 @@ const apiClient = axios.create(API_CONFIG);
 // Request interceptor: Attach Authorization header if token exists & handle multipart
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-    if (token && !config.headers.Authorization) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const token =
+      localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) ||
+      localStorage.getItem('accessToken') ||
+      localStorage.getItem('token');
+
+    if (token) {
+      if (typeof config.headers?.set === 'function') {
+        config.headers.set('Authorization', `Bearer ${token}`);
+      } else if (config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+        config.headers.authorization = `Bearer ${token}`;
+      }
     }
 
     // Never force manual multipart/form-data Content-Type; allow browser/axios to set boundary automatically
@@ -61,26 +70,14 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Detect if Backend Server is completely OFF / Unreachable (Network Error / Connection Refused)
-    const isNetworkError = !error.response && (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error'));
-    if (isNetworkError) {
-      const hasStoredToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) || localStorage.getItem(STORAGE_KEYS.USER);
-      if (hasStoredToken) {
-        // Backend server is OFF! Clear stored session immediately so user must log in once backend reconnects
-        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-        localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-        localStorage.removeItem(STORAGE_KEYS.USER);
-        sessionStorage.clear();
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('auth:server-disconnected'));
-        }
-      }
+    const originalRequest = error.config;
+
+    // Do not attempt refresh or trigger session wipe on staff check endpoints or login endpoints
+    const isStaffRoute = originalRequest?.url?.includes('/staff/me/') || originalRequest?.url?.includes('/staff/login/');
+    if (isStaffRoute) {
       return Promise.reject(error);
     }
 
-    const originalRequest = error.config;
-
-    // Do not attempt refresh on login or token refresh endpoints
     const isAuthRoute =
       originalRequest?.url?.includes('/users/login/') ||
       originalRequest?.url?.includes('/users/token/refresh/');

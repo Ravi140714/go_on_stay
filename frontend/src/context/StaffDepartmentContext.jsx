@@ -27,14 +27,26 @@ export const StaffDepartmentProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   const fetchStaffProfile = useCallback(async () => {
+    // If not authenticated, do nothing
+    if (!accessToken || !user) {
+      setLoading(false);
+      return;
+    }
+
     // If user is Admin or Super Admin, they have universal access to all portals
     if (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' || user?.is_superuser) {
       setLoading(false);
       return;
     }
 
-    if (!accessToken) {
+    // STRICT CHECK: Only genuine staff members should ever call /api/staff/me/
+    // Customers, Guests, and Hotel Owners must NEVER call /api/staff/me/
+    const isStaff = user?.role === 'STAFF' || user?.is_staff || user?.isStaff;
+    if (!isStaff) {
       setLoading(false);
+      setDepartmentProfile(null);
+      setDepartment(null);
+      setPermissions([]);
       return;
     }
 
@@ -55,7 +67,7 @@ export const StaffDepartmentProvider = ({ children }) => {
         throw new Error('No department assigned to this staff account.');
       }
     } catch (err) {
-      console.error('Failed to validate staff profile from /api/staff/me/:', err);
+      console.warn('Failed to validate staff profile from /api/staff/me/:', err?.response?.data || err?.message);
       setError(err.response?.data?.message || err.message || 'Unauthorized staff access.');
     } finally {
       setLoading(false);

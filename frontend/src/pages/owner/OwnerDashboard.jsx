@@ -257,7 +257,43 @@ const OwnerDashboard = () => {
         }));
         setHotels(hotelsWithRooms);
       }
-      if (bookingsRes.status === 'fulfilled') setBookings(bookingsRes.value?.results || bookingsRes.value);
+      if (bookingsRes.status === 'fulfilled') {
+        const rawBookings = bookingsRes.value?.results || bookingsRes.value || [];
+        const pendingMap = JSON.parse(localStorage.getItem('pending_cancellations') || '{}');
+        const mergedBookings = rawBookings.map((b) => {
+          const p = pendingMap[String(b.id)] || pendingMap[String(b.booking_id)] || pendingMap[String(b.booking_id || '').replace(/^#/, '')];
+          if (p) {
+            const bStatus = (b.booking_status || '').toUpperCase();
+            const pStatus = (b.payment_status || '').toUpperCase();
+            if (bStatus !== 'CANCELLED' && bStatus !== 'REFUNDED' && pStatus !== 'REFUNDED') {
+              return {
+                ...b,
+                booking_status: p.booking_status || 'CANCELLATION_REQUESTED',
+                cancellation_status: p.cancellation_status || 'CANCELLATION_REQUESTED',
+                payment_status: p.payment_status || 'REFUND_PENDING',
+                owner_approval_status: p.owner_approval_status || 'PENDING',
+                refundable_amount: p.refundable_amount || b.refundable_amount,
+                cancellation_reason: p.cancellation_reason || b.cancellation_reason,
+                cancellation_breakdown: {
+                  ...(b.cancellation_breakdown || {}),
+                  owner_approval: { status: p.owner_approval_status || 'PENDING' }
+                }
+              };
+            } else if (p.owner_approval_status) {
+              return {
+                ...b,
+                owner_approval_status: p.owner_approval_status,
+                cancellation_breakdown: {
+                  ...(b.cancellation_breakdown || {}),
+                  owner_approval: { status: p.owner_approval_status }
+                }
+              };
+            }
+          }
+          return b;
+        });
+        setBookings(mergedBookings);
+      }
       if (settlementsRes.status === 'fulfilled') setSettlementData(settlementsRes.value || { summary: {}, results: [] });
       if (reviewsRes.status === 'fulfilled') setReviews(reviewsRes.value?.results || reviewsRes.value || []);
       if (ticketsRes.status === 'fulfilled') {
@@ -453,10 +489,12 @@ const OwnerDashboard = () => {
     const pStatus = (b.payment_status || '').toUpperCase();
     const cStatus = (b.cancellation_status || '').toUpperCase();
     return (
+      bStatus === 'CANCEL_REQUESTED' ||
       bStatus === 'CANCELLATION_REQUESTED' ||
       bStatus === 'OWNER_APPROVED' ||
       bStatus === 'OWNER_REJECTED' ||
       bStatus === 'CANCELLED' ||
+      cStatus === 'CANCEL_REQUESTED' ||
       cStatus === 'CANCELLATION_REQUESTED' ||
       cStatus === 'OWNER_APPROVED' ||
       cStatus === 'OWNER_REJECTED' ||
@@ -588,17 +626,50 @@ const OwnerDashboard = () => {
     }
 
     setApprovingBookingId(booking.id);
+    const bId = booking.booking_id || booking.id;
     try {
       try {
-        await api.post(`/bookings/${booking.id}/owner-approval/`, {
+        await api.post(`/bookings/${bId}/owner-approval/`, {
           status: 'APPROVED',
           action: 'APPROVE',
         });
       } catch (errFallback) {
-        await api.post(`/bookings/${booking.id}/cancel/`, {
-          action: 'APPROVE',
-          status: 'OWNER_APPROVED',
-        });
+        try {
+          if (booking.id && String(booking.id) !== String(bId)) {
+            await api.post(`/bookings/${booking.id}/owner-approval/`, {
+              status: 'APPROVED',
+              action: 'APPROVE',
+            });
+          } else {
+            throw errFallback;
+          }
+        } catch (err2) {
+          await api.post(`/bookings/${bId}/cancel/`, {
+            action: 'APPROVE',
+            status: 'OWNER_APPROVED',
+          });
+        }
+      }
+
+      // Persist owner approval to pending_cancellations in localStorage
+      try {
+        const pendingMap = JSON.parse(localStorage.getItem('pending_cancellations') || '{}');
+        const numKey = String(booking.id || '');
+        const rawKey = String(booking.booking_id || '');
+        const cleanKey = rawKey.replace(/^#/, '');
+        const updatedEntry = {
+          ...(pendingMap[numKey] || pendingMap[rawKey] || pendingMap[cleanKey] || {}),
+          booking_status: 'OWNER_APPROVED',
+          cancellation_status: 'OWNER_APPROVED',
+          owner_approval_status: 'APPROVED',
+          payment_status: 'REFUND_PENDING'
+        };
+        if (numKey) pendingMap[numKey] = updatedEntry;
+        if (rawKey) pendingMap[rawKey] = updatedEntry;
+        if (cleanKey) pendingMap[cleanKey] = updatedEntry;
+        localStorage.setItem('pending_cancellations', JSON.stringify(pendingMap));
+      } catch (e) {
+        console.warn('LocalStorage save notice:', e);
       }
 
       showToast(`✅ Cancellation for Booking #${booking.booking_id || booking.id} approved! Forwarded to Super Admin for refund disbursal.`, 'success');
@@ -637,19 +708,53 @@ const OwnerDashboard = () => {
     }
 
     setSubmittingRejection(true);
+    const bId = rejectingBooking.booking_id || rejectingBooking.id;
     try {
       try {
-        await api.post(`/bookings/${rejectingBooking.id}/owner-approval/`, {
+        await api.post(`/bookings/${bId}/owner-approval/`, {
           status: 'REJECTED',
           action: 'REJECT',
           reason: rejectionReasonInput.trim(),
         });
       } catch (errFallback) {
-        await api.post(`/bookings/${rejectingBooking.id}/cancel/`, {
-          action: 'REJECT',
-          status: 'OWNER_REJECTED',
-          reason: rejectionReasonInput.trim(),
-        });
+        try {
+          if (rejectingBooking.id && String(rejectingBooking.id) !== String(bId)) {
+            await api.post(`/bookings/${rejectingBooking.id}/owner-approval/`, {
+              status: 'REJECTED',
+              action: 'REJECT',
+              reason: rejectionReasonInput.trim(),
+            });
+          } else {
+            throw errFallback;
+          }
+        } catch (err2) {
+          await api.post(`/bookings/${bId}/cancel/`, {
+            action: 'REJECT',
+            status: 'OWNER_REJECTED',
+            reason: rejectionReasonInput.trim(),
+          });
+        }
+      }
+
+      // Persist owner rejection to pending_cancellations in localStorage
+      try {
+        const pendingMap = JSON.parse(localStorage.getItem('pending_cancellations') || '{}');
+        const numKey = String(rejectingBooking.id || '');
+        const rawKey = String(rejectingBooking.booking_id || '');
+        const cleanKey = rawKey.replace(/^#/, '');
+        const updatedEntry = {
+          ...(pendingMap[numKey] || pendingMap[rawKey] || pendingMap[cleanKey] || {}),
+          booking_status: 'OWNER_REJECTED',
+          cancellation_status: 'OWNER_REJECTED',
+          owner_approval_status: 'REJECTED',
+          rejection_reason: rejectionReasonInput.trim()
+        };
+        if (numKey) pendingMap[numKey] = updatedEntry;
+        if (rawKey) pendingMap[rawKey] = updatedEntry;
+        if (cleanKey) pendingMap[cleanKey] = updatedEntry;
+        localStorage.setItem('pending_cancellations', JSON.stringify(pendingMap));
+      } catch (e) {
+        console.warn('LocalStorage save notice:', e);
       }
 
       showToast(`Cancellation for Booking #${rejectingBooking.booking_id || rejectingBooking.id} has been rejected.`, 'info');
@@ -3949,7 +4054,7 @@ const OwnerDashboard = () => {
             </div>
 
             {/* Cancellation & Refund Settlement for Owner */}
-            {(selectedBookingForDetails.booking_status === 'CANCELLED' || selectedBookingForDetails.booking_status === 'CANCELLATION_REQUESTED' || selectedBookingForDetails.booking_status === 'OWNER_APPROVED' || selectedBookingForDetails.booking_status === 'OWNER_REJECTED' || selectedBookingForDetails.payment_status === 'REFUND_PENDING' || selectedBookingForDetails.payment_status === 'REFUNDED') && (
+            {(selectedBookingForDetails.booking_status === 'CANCELLED' || selectedBookingForDetails.booking_status === 'CANCEL_REQUESTED' || selectedBookingForDetails.booking_status === 'CANCELLATION_REQUESTED' || selectedBookingForDetails.cancellation_status === 'CANCEL_REQUESTED' || selectedBookingForDetails.booking_status === 'OWNER_APPROVED' || selectedBookingForDetails.booking_status === 'OWNER_REJECTED' || selectedBookingForDetails.payment_status === 'REFUND_PENDING' || selectedBookingForDetails.payment_status === 'REFUNDED') && (
               <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="font-black text-amber-950 uppercase tracking-wider flex items-center gap-1.5 text-xs">
@@ -3960,20 +4065,22 @@ const OwnerDashboard = () => {
                                        (selectedBookingForDetails.refund_status || '').toUpperCase() === 'REFUNDED' ||
                                        (selectedBookingForDetails.booking_status || '').toUpperCase() === 'REFUNDED' ||
                                        (selectedBookingForDetails.status || '').toUpperCase() === 'REFUNDED';
+                    const bSt = (selectedBookingForDetails.booking_status || '').toUpperCase();
+                    const cSt = (selectedBookingForDetails.cancellation_status || '').toUpperCase();
                     return (
                       <span className={`px-2.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
                         isRefunded
                           ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                          : selectedBookingForDetails.booking_status === 'OWNER_APPROVED'
+                          : (bSt === 'OWNER_APPROVED' || cSt === 'OWNER_APPROVED')
                           ? 'bg-sky-100 text-sky-800 border border-sky-300'
-                          : selectedBookingForDetails.booking_status === 'OWNER_REJECTED'
+                          : (bSt === 'OWNER_REJECTED' || cSt === 'OWNER_REJECTED')
                           ? 'bg-rose-100 text-rose-800 border border-rose-300'
                           : 'bg-amber-100 text-amber-900 border border-amber-300'
                       }`}>
                         {isRefunded ? '✅ REFUND DISBURSED' :
-                         selectedBookingForDetails.booking_status === 'CANCELLATION_REQUESTED' ? '⏳ PENDING YOUR APPROVAL' :
-                         selectedBookingForDetails.booking_status === 'OWNER_APPROVED' ? '✅ FORWARDED TO ADMIN' :
-                         selectedBookingForDetails.booking_status === 'OWNER_REJECTED' ? '❌ REJECTED BY YOU' :
+                         (bSt === 'CANCEL_REQUESTED' || bSt === 'CANCELLATION_REQUESTED' || cSt === 'CANCEL_REQUESTED') ? '⏳ PENDING YOUR APPROVAL' :
+                         (bSt === 'OWNER_APPROVED' || cSt === 'OWNER_APPROVED') ? '✅ FORWARDED TO ADMIN' :
+                         (bSt === 'OWNER_REJECTED' || cSt === 'OWNER_REJECTED') ? '❌ REJECTED BY YOU' :
                          selectedBookingForDetails.payment_status}
                       </span>
                     );

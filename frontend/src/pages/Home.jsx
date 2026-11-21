@@ -4,12 +4,15 @@ import {
   Search, MapPin, Calendar, Users, Hotel, ShieldCheck,
   Star, Sparkles, Compass, CheckCircle2, ArrowRight, Tag,
   ChevronLeft, ChevronRight, Heart, Wifi, Coffee, Tv,
-  Clock, ChevronDown, X, AlertTriangle, RefreshCw
+  Clock, ChevronDown, X, AlertTriangle, RefreshCw,
+  LayoutGrid, Map, SlidersHorizontal, ArrowUpDown, Utensils,
+  BedDouble, Building2, Check, Eye
 } from 'lucide-react';
 import api from '../services/api';
 import { hotelService, wishlistService } from '../services';
 import InteractiveSearchBar from '../components/InteractiveSearchBar';
 import CategoryTabs from '../components/CategoryTabs';
+import HotelMapView from '../components/HotelMapView';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -34,6 +37,45 @@ const Home = () => {
   const [featuredHotels, setFeaturedHotels] = useState([]);
   const [loadingHotels, setLoadingHotels] = useState(true);
   const [hotelError, setHotelError] = useState(false);
+
+  // Date calculation helpers
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTomorrowStr = (baseDateStr, offsetDays = 1) => {
+    let base;
+    if (baseDateStr && /^\d{4}-\d{2}-\d{2}$/.test(baseDateStr)) {
+      const [y, m, d] = baseDateStr.split('-').map(Number);
+      base = new Date(y, m - 1, d);
+    } else {
+      base = new Date();
+    }
+    base.setDate(base.getDate() + offsetDays);
+    const year = base.getFullYear();
+    const month = String(base.getMonth() + 1).padStart(2, '0');
+    const day = String(base.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Search state from InteractiveSearchBar
+  const [searchCriteria, setSearchCriteria] = useState({
+    destination: '',
+    checkIn: '',
+    checkOut: '',
+    rooms: 1,
+    guests: 2,
+    isSearched: false
+  });
+  const [selectedHotelForRooms, setSelectedHotelForRooms] = useState(null);
+  const [modalRooms, setModalRooms] = useState([]);
+  const [modalRoomsLoading, setModalRoomsLoading] = useState(false);
+  const [selectedRoomDetail, setSelectedRoomDetail] = useState(null);
+  const resultsSectionRef = useRef(null);
 
   // Wishlist State & Handlers
   const [userWishlist, setUserWishlist] = useState([]);
@@ -223,6 +265,54 @@ const Home = () => {
   // Selected Category: 'HOTELS' | 'VILLAS'
   const [selectedCategory, setSelectedCategory] = useState('HOTELS');
 
+  // View Mode: 'list' | 'map'
+  const [viewMode, setViewMode] = useState('list');
+  const [sortBy, setSortBy] = useState('recommended');
+  const [showFilterModal, setShowFilterModal] = useState(false);
+
+  // Filter States
+  const [priceMax, setPriceMax] = useState(15000);
+  const [selectedStars, setSelectedStars] = useState([]);
+  const [freeCancellation, setFreeCancellation] = useState(false);
+  const [breakfastIncluded, setBreakfastIncluded] = useState(false);
+  const [selectedAmenities, setSelectedAmenities] = useState([]);
+
+  // Compute active filters count
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (priceMax < 15000) count += 1;
+    if (selectedStars.length > 0) count += selectedStars.length;
+    if (freeCancellation) count += 1;
+    if (breakfastIncluded) count += 1;
+    if (selectedAmenities.length > 0) count += selectedAmenities.length;
+    return count;
+  }, [priceMax, selectedStars, freeCancellation, breakfastIncluded, selectedAmenities]);
+
+  const handleStarToggle = (star) => {
+    setSelectedStars(prev =>
+      prev.includes(star) ? prev.filter(s => s !== star) : [...prev, star]
+    );
+  };
+
+  const handleAmenityToggle = (amenity) => {
+    setSelectedAmenities(prev =>
+      prev.includes(amenity) ? prev.filter(a => a !== amenity) : [...prev, amenity]
+    );
+  };
+
+  const handleResetFilters = () => {
+    setPriceMax(15000);
+    setSelectedStars([]);
+    setFreeCancellation(false);
+    setBreakfastIncluded(false);
+    setSelectedAmenities([]);
+  };
+
+  const availableAmenities = [
+    'WiFi', 'Swimming Pool', 'Air Conditioning', 'Free Parking',
+    'Spa & Wellness', 'Gym / Fitness', 'Restaurant', 'Bar', 'Room Service'
+  ];
+
   // Filter properties by selected category (Hotels/Resorts vs Villas/Homestays)
   const categoryFilteredHotels = useMemo(() => {
     if (!featuredHotels) return [];
@@ -232,26 +322,195 @@ const Home = () => {
     return featuredHotels.filter(h => h.property_type === 'HOTEL' || h.property_type === 'RESORT' || !h.property_type);
   }, [featuredHotels, selectedCategory]);
 
+  // Combined Filters + Sorting Applied to Category Properties
+  const displayedHotels = useMemo(() => {
+    if (!categoryFilteredHotels) return [];
+    let list = [...categoryFilteredHotels];
+
+    // 0. Search Destination Filter (when user searched via Find Rooms)
+    if (searchCriteria.isSearched && searchCriteria.destination) {
+      const q = searchCriteria.destination.toLowerCase().trim().split(',')[0].trim();
+      list = list.filter(h => {
+        const name = (h.name || '').toLowerCase();
+        const city = (h.city || '').toLowerCase();
+        const state = (h.state || '').toLowerCase();
+        const address = (h.address || '').toLowerCase();
+        const dest = (h.destination || '').toLowerCase();
+        return name.includes(q) || city.includes(q) || q.includes(city) || state.includes(q) || address.includes(q) || dest.includes(q);
+      });
+    }
+
+    // 1. Price Max
+    if (priceMax < 15000) {
+      list = list.filter(h => (h.starting_price || 0) <= priceMax);
+    }
+
+    // 2. Star Rating
+    if (selectedStars.length > 0) {
+      list = list.filter(h => selectedStars.includes(Number(h.star_rating)));
+    }
+
+    // 3. Free Cancellation
+    if (freeCancellation) {
+      list = list.filter(h => h.rooms?.some(r => r.free_cancellation) || h.free_cancellation);
+    }
+
+    // 4. Breakfast Included
+    if (breakfastIncluded) {
+      list = list.filter(h => h.rooms?.some(r => r.breakfast_included) || h.breakfast_included);
+    }
+
+    // 5. Amenities
+    if (selectedAmenities.length > 0) {
+      list = list.filter(h => {
+        const hotelAmenities = (h.amenities || []).map(a => (typeof a === 'string' ? a : a.name || '').toLowerCase());
+        return selectedAmenities.every(reqAm => hotelAmenities.some(ha => ha.includes(reqAm.toLowerCase())));
+      });
+    }
+
+    // 6. Sorting Logic
+    list.sort((a, b) => {
+      if (sortBy === 'price_low') {
+        return (a.starting_price || 0) - (b.starting_price || 0);
+      }
+      if (sortBy === 'price_high') {
+        return (b.starting_price || 0) - (a.starting_price || 0);
+      }
+      if (sortBy === 'rating') {
+        return (Number(b.guest_rating) || 0) - (Number(a.guest_rating) || 0);
+      }
+      if (sortBy === 'newest') {
+        return (b.id || 0) - (a.id || 0);
+      }
+      // recommended: highest rating & reviews first
+      const scoreA = (Number(a.guest_rating) || 4.5) * 10 + (a.reviews_count || 0);
+      const scoreB = (Number(b.guest_rating) || 4.5) * 10 + (b.reviews_count || 0);
+      return scoreB - scoreA;
+    });
+
+    return list;
+  }, [categoryFilteredHotels, priceMax, selectedStars, freeCancellation, breakfastIncluded, selectedAmenities, sortBy, searchCriteria]);
+
   // City Filter State for Featured Stays
   const [selectedCityFilter, setSelectedCityFilter] = useState('ALL');
 
-  // Dynamic city categories from category-filtered properties
-  const cityCategories = React.useMemo(() => {
-    const cities = new Set(categoryFilteredHotels.map((h) => h.city).filter(Boolean));
+  // Dynamic city categories from displayed properties
+  const cityCategories = useMemo(() => {
+    const cities = new Set(displayedHotels.map((h) => h.city).filter(Boolean));
     return ['ALL', ...Array.from(cities)];
-  }, [categoryFilteredHotels]);
+  }, [displayedHotels]);
 
-  const groupedHotelsByCity = React.useMemo(() => {
+  const groupedHotelsByCity = useMemo(() => {
     const groups = {};
-    categoryFilteredHotels.forEach((hotel) => {
+    displayedHotels.forEach((hotel) => {
       const cityKey = hotel.city || 'Other';
       if (!groups[cityKey]) groups[cityKey] = [];
       groups[cityKey].push(hotel);
     });
     return groups;
-  }, [categoryFilteredHotels]);
+  }, [displayedHotels]);
 
   const activeCitiesList = Object.keys(groupedHotelsByCity);
+
+  // Search Submission from InteractiveSearchBar (without navigating to /search)
+  const handleSearchFromBar = (searchData) => {
+    const dest = (searchData.destination || '').trim();
+    const today = getTodayStr();
+    const validIn = searchData.checkIn && searchData.checkIn >= today ? searchData.checkIn : today;
+    const validOut = searchData.checkOut && searchData.checkOut > validIn ? searchData.checkOut : getTomorrowStr(validIn, 1);
+
+    setSearchCriteria({
+      destination: dest,
+      checkIn: validIn,
+      checkOut: validOut,
+      rooms: Number(searchData.rooms) || 1,
+      guests: Number(searchData.guests) || 2,
+      isSearched: true
+    });
+    setShowRecentPopover(false);
+
+    // If destination matches one of the city categories, adjust filter
+    if (dest) {
+      const cleanDest = dest.toLowerCase().split(',')[0].trim();
+      const match = cityCategories.find(c => {
+        const cl = (c || '').toLowerCase();
+        return cl.includes(cleanDest) || cleanDest.includes(cl);
+      });
+      if (match) {
+        setSelectedCityFilter(match);
+      } else {
+        setSelectedCityFilter('ALL');
+      }
+    } else {
+      setSelectedCityFilter('ALL');
+    }
+
+    // Smooth scroll down to the hotels section
+    const triggerScroll = () => {
+      const el = document.getElementById('featured-hotels-section') || resultsSectionRef.current;
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+    setTimeout(triggerScroll, 80);
+    setTimeout(triggerScroll, 250);
+  };
+
+  // Auto-scroll down to hotels section whenever a search is triggered
+  useEffect(() => {
+    if (searchCriteria.isSearched) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById('featured-hotels-section') || resultsSectionRef.current;
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [searchCriteria.isSearched, searchCriteria.destination]);
+
+  const handleClearSearch = () => {
+    setSearchCriteria({
+      destination: '',
+      checkIn: '',
+      checkOut: '',
+      rooms: 1,
+      guests: 2,
+      isSearched: false
+    });
+    setSelectedCityFilter('ALL');
+  };
+
+  // Reset search and filters on global clearSearchFilter event (e.g. Logo click)
+  useEffect(() => {
+    const handleClearAll = () => {
+      handleClearSearch();
+      handleResetFilters();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.addEventListener('clearSearchFilter', handleClearAll);
+    return () => window.removeEventListener('clearSearchFilter', handleClearAll);
+  }, []);
+
+  // Open Room Preview Modal for a hotel directly on Home page
+  const handleOpenRoomsModal = async (hotel, e) => {
+    if (e) e.stopPropagation();
+    setSelectedHotelForRooms(hotel);
+    setModalRoomsLoading(true);
+    try {
+      const checkInParam = searchCriteria.checkIn || '';
+      const checkOutParam = searchCriteria.checkOut || '';
+      const roomsParam = searchCriteria.rooms || 1;
+      const res = await api.get(`/rooms/by-hotel/${hotel.id}/?check_in=${checkInParam}&check_out=${checkOutParam}&rooms=${roomsParam}`);
+      const rList = res.data.results || res.data || [];
+      setModalRooms(Array.isArray(rList) ? rList : []);
+    } catch (err) {
+      console.error('Failed to load rooms for hotel:', err);
+      setModalRooms([]);
+    } finally {
+      setModalRoomsLoading(false);
+    }
+  };
 
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [showRecentPopover, setShowRecentPopover] = useState(false);
@@ -394,134 +653,214 @@ const Home = () => {
                 {t('hero_subtitle')}
               </p>
 
-              {/* RECENTLY VIEWED HOTELS / RECENT SEARCHES BUTTON & POPUP */}
-              <div className="pt-1 flex items-center relative z-40" ref={recentPopoverRef}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setShowRecentPopover((prev) => !prev);
-                  }}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                  }}
-                  className="px-4 py-2 rounded-full bg-white/90 hover:bg-white border border-slate-200/90 shadow-2xs hover:shadow-md text-xs font-extrabold text-slate-700 hover:text-[#207a72] flex items-center gap-2 transition-all cursor-pointer group"
-                >
-                  <Clock className="w-3.5 h-3.5 text-[#207a72] group-hover:rotate-12 transition-transform" />
-                  <span>
-                    {t('recently_viewed')} {recentlyViewed && recentlyViewed.length > 0 ? `(${recentlyViewed.length})` : ''}
-                  </span>
-                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 group-hover:text-[#207a72] transition-transform duration-200 ${showRecentPopover ? 'rotate-180' : ''}`} />
-                </button>
-
-                {/* DROPDOWN POPOVER */}
-                {showRecentPopover && (
-                  <div
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className="absolute top-full mt-2 w-80 sm:w-96 rounded-3xl bg-white/98 backdrop-blur-xl border border-slate-200 shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-200 z-50 text-left"
-                  >
-                    <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-xl bg-teal-50 text-[#207a72]">
-                          <Clock className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{t('recently_viewed')}</h4>
-                          <p className="text-[10px] text-slate-400 font-bold">Pick up right where you left off</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {recentlyViewed && recentlyViewed.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={handleClearAllRecent}
-                            onMouseDown={(e) => {
-                              e.stopPropagation();
-                              handleClearAllRecent(e);
-                            }}
-                            onTouchEnd={(e) => {
-                              e.stopPropagation();
-                              handleClearAllRecent(e);
-                            }}
-                            className="text-xs font-black text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 transition-all cursor-pointer px-2.5 py-1 rounded-lg active:scale-95 shadow-2xs shrink-0"
-                            title="Clear all recent history"
-                          >
-                            {t('clear_all')}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setShowRecentPopover(false);
-                          }}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
-                          title="Close"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="max-h-72 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                      {recentlyViewed && recentlyViewed.length > 0 ? (
-                        recentlyViewed.map((item) => (
-                          <div
-                            key={item.id}
-                            onClick={() => {
-                              setShowRecentPopover(false);
-                              navigate(`/hotels/${item.id}`);
-                            }}
-                            className="group p-2 rounded-2xl border border-slate-100 bg-slate-50/60 hover:bg-teal-50/50 hover:border-teal-200 flex items-center justify-between gap-3 cursor-pointer transition-all"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <img
-                                src={item.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=400&q=80'}
-                                alt={item.name}
-                                className="w-10 h-10 rounded-xl object-cover shrink-0 border border-slate-200"
-                              />
-                              <div className="min-w-0">
-                                <h5 className="text-xs font-black text-slate-800 group-hover:text-[#207a72] truncate transition-colors">
-                                  {item.name}
-                                </h5>
-                                <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                                  <MapPin className="w-3 h-3 text-[#207a72] shrink-0" /> {item.city}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <button
-                                type="button"
-                                onClick={(e) => handleRemoveRecent(e, item.id)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-100/50 transition-colors cursor-pointer sm:opacity-0 sm:group-hover:opacity-100"
-                                title="Remove from history"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#207a72] group-hover:translate-x-1 transition-all" />
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="py-6 text-center space-y-2">
-                          <Clock className="w-6 h-6 text-slate-300 mx-auto" />
-                          <p className="text-xs font-bold text-slate-500">No recently viewed hotels</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Pill Search Bar */}
-              <div className="pt-2 relative z-30">
+              {/* Pill Search Bar & Action Controls directly below it */}
+              <div className="pt-1 relative z-30">
                 <InteractiveSearchBar
                   selectedCategory={selectedCategory}
                   onTabChange={() => setShowRecentPopover(false)}
+                  onSearch={handleSearchFromBar}
                 />
+
+                {/* SEARCH BAR SUB-ROW: Recently Viewed beside Filter Controls (List/Map, Filters Drawer, Sort By) */}
+                <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2.5 relative z-20">
+                  {/* RECENTLY VIEWED HOTELS BUTTON & POPUP */}
+                  <div className="relative" ref={recentPopoverRef}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowRecentPopover((prev) => !prev);
+                      }}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                      }}
+                      className="px-4 py-2 rounded-full bg-white/95 hover:bg-white border border-slate-200/90 shadow-2xs hover:shadow-md text-xs font-extrabold text-slate-700 hover:text-[#207a72] flex items-center gap-2 transition-all cursor-pointer group"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-[#207a72] group-hover:rotate-12 transition-transform" />
+                      <span>
+                        {t('recently_viewed')} {recentlyViewed && recentlyViewed.length > 0 ? `(${recentlyViewed.length})` : ''}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 group-hover:text-[#207a72] transition-transform duration-200 ${showRecentPopover ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {/* DROPDOWN POPOVER */}
+                    {showRecentPopover && (
+                      <div
+                        onMouseDown={(e) => e.stopPropagation()}
+                        className="absolute top-full mt-2 left-0 w-80 sm:w-96 rounded-3xl bg-white/98 backdrop-blur-xl border border-slate-200 shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-200 z-50 text-left"
+                      >
+                        <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <div className="p-1.5 rounded-xl bg-teal-50 text-[#207a72]">
+                              <Clock className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{t('recently_viewed')}</h4>
+                              <p className="text-[10px] text-slate-400 font-bold">Pick up right where you left off</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {recentlyViewed && recentlyViewed.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleClearAllRecent}
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  handleClearAllRecent(e);
+                                }}
+                                onTouchEnd={(e) => {
+                                  e.stopPropagation();
+                                  handleClearAllRecent(e);
+                                }}
+                                className="text-xs font-black text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 transition-all cursor-pointer px-2.5 py-1 rounded-lg active:scale-95 shadow-2xs shrink-0"
+                                title="Clear all recent history"
+                              >
+                                {t('clear_all')}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setShowRecentPopover(false);
+                              }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+                              title="Close"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="max-h-72 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                          {recentlyViewed && recentlyViewed.length > 0 ? (
+                            recentlyViewed.map((item) => (
+                              <div
+                                key={item.id}
+                                onClick={() => {
+                                  setShowRecentPopover(false);
+                                  navigate(`/hotels/${item.id}`);
+                                }}
+                                className="group p-2 rounded-2xl border border-slate-100 bg-slate-50/60 hover:bg-teal-50/50 hover:border-teal-200 flex items-center justify-between gap-3 cursor-pointer transition-all"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <img
+                                    src={item.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=400&q=80'}
+                                    alt={item.name}
+                                    className="w-10 h-10 rounded-xl object-cover shrink-0 border border-slate-200"
+                                  />
+                                  <div className="min-w-0">
+                                    <h5 className="text-xs font-black text-slate-800 group-hover:text-[#207a72] truncate transition-colors">
+                                      {item.name}
+                                    </h5>
+                                    <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                      <MapPin className="w-3 h-3 text-[#207a72] shrink-0" /> {item.city}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleRemoveRecent(e, item.id)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-100/50 transition-colors cursor-pointer sm:opacity-0 sm:group-hover:opacity-100"
+                                    title="Remove from history"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#207a72] group-hover:translate-x-1 transition-all" />
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="py-6 text-center space-y-2">
+                              <Clock className="w-6 h-6 text-slate-300 mx-auto" />
+                              <p className="text-xs font-bold text-slate-500">No recently viewed hotels</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Filters, View Mode Toggle, and Sort Buttons (under Find Rooms) */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* View Mode Toggle: List View / Map View */}
+                    <div className="flex items-center bg-white/95 p-1 rounded-full border border-slate-200/90 shadow-2xs shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewMode('list');
+                          const el = document.getElementById('featured-hotels-section') || resultsSectionRef.current;
+                          if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className={`py-1.5 px-3 rounded-full font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                          viewMode === 'list'
+                            ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                            : 'text-[#475569] hover:text-[#0F172A]'
+                        }`}
+                        title="Switch to List View"
+                      >
+                        <LayoutGrid className={`w-3.5 h-3.5 ${viewMode === 'list' ? 'text-white' : 'text-[#475569]'}`} />
+                        <span>{t('list_view')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewMode('map');
+                          const el = document.getElementById('featured-hotels-section') || resultsSectionRef.current;
+                          if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className={`py-1.5 px-3 rounded-full font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                          viewMode === 'map'
+                            ? 'bg-[#0284C7] text-white shadow-[0_4px_12px_rgba(2,132,199,0.25)]'
+                            : 'text-[#475569] hover:text-[#0F172A]'
+                        }`}
+                        title="Switch to Map View"
+                      >
+                        <Map className={`w-3.5 h-3.5 ${viewMode === 'map' ? 'text-white' : 'text-[#475569]'}`} />
+                        <span>{t('map_view')}</span>
+                      </button>
+                    </div>
+
+                    {/* Filter Drawer Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowFilterModal(true)}
+                      className="py-2 px-3.5 rounded-full border border-slate-200/90 bg-white/95 hover:bg-white text-[#475569] hover:text-[#0F172A] transition-all font-black text-xs flex items-center gap-2 shadow-2xs hover:shadow-xs cursor-pointer shrink-0"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-[#0284C7]" />
+                      <span>{t('filters')}</span>
+                      {activeFiltersCount > 0 ? (
+                        <span className="w-5 h-5 rounded-full bg-[#0284C7] text-white text-[10px] font-black flex items-center justify-center">
+                          {activeFiltersCount}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">{t('all')}</span>
+                      )}
+                    </button>
+
+                    {/* Sort Dropdown */}
+                    <div className="flex items-center gap-2 text-xs font-extrabold shrink-0 bg-white/95 border border-slate-200/90 px-3 py-1.5 rounded-full shadow-2xs">
+                      <span className="text-slate-500 hidden sm:flex items-center gap-1 shrink-0 text-xs font-extrabold">
+                        <ArrowUpDown className="w-3.5 h-3.5 text-rose-600" /> {t('sort_by')}:
+                      </span>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="bg-transparent font-black text-xs text-slate-800 outline-none cursor-pointer pr-1"
+                      >
+                        <option value="recommended">{t('sort_recommended')}</option>
+                        <option value="price_low">{t('sort_price_low_high')}</option>
+                        <option value="price_high">{t('sort_price_high_low')}</option>
+                        <option value="rating">{t('sort_rating_high_low')}</option>
+                        <option value="newest">{t('sort_newest')}</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -653,7 +992,15 @@ const Home = () => {
               {infinitePopularCities.map((city, index) => (
                 <div
                   key={`${city.name}-${index}`}
-                  onClick={() => navigate(`/search?city=${encodeURIComponent(city.name)}`)}
+                  onClick={() => {
+                    handleSearchFromBar({
+                      destination: city.name,
+                      checkIn: searchCriteria.checkIn || getTodayStr(),
+                      checkOut: searchCriteria.checkOut || getTomorrowStr(getTodayStr(), 1),
+                      rooms: 1,
+                      guests: 2
+                    });
+                  }}
                   className="destination-card w-full sm:w-[calc((100%-1.5rem)/2)] md:w-[calc((100%-3rem)/3)] lg:w-[calc((100%-4.5rem)/4)] min-w-full sm:min-w-[calc((100%-1.5rem)/2)] md:min-w-[calc((100%-3rem)/3)] lg:min-w-[calc((100%-4.5rem)/4)] max-w-full sm:max-w-[calc((100%-1.5rem)/2)] md:max-w-[calc((100%-3rem)/3)] lg:max-w-[calc((100%-4.5rem)/4)] group relative h-64 rounded-xl overflow-hidden cursor-pointer shadow-sm border border-slate-200 flex-shrink-0 transition-all duration-300 hover:border-slate-300 hover:shadow-md"
                 >
                   {/* Background Image or Clean Placeholder */}
@@ -695,7 +1042,7 @@ const Home = () => {
       )}
 
       {/* FEATURED HOTELS & VILLAS SECTION - SEPARATED BY CITY ROWS */}
-      <section className="py-14 max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+      <section id="featured-hotels-section" ref={resultsSectionRef} className="py-14 max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8 space-y-8 scroll-mt-6">
 
         {/* TOP CATEGORY SWITCHER TABS: [Hotels] | [Villas & Homestays] */}
         <div className="bg-[#eaf3f9] rounded-2xl border border-sky-200/80 shadow-xs px-4 pt-3 pb-1">
@@ -715,36 +1062,37 @@ const Home = () => {
           <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
             <div>
               <h2 className="text-2xl sm:text-3xl font-black text-slate-900">
-                {selectedCategory === 'VILLAS' ? t('handpicked_luxury') : t('featured_stays')}
+                {searchCriteria.isSearched
+                  ? `Stays in ${searchCriteria.destination || 'All Locations'}`
+                  : selectedCategory === 'VILLAS'
+                  ? t('handpicked_luxury')
+                  : t('featured_stays')}
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                {t('explore_top_cities')}
+                {searchCriteria.isSearched
+                  ? `Showing live properties and rooms available for booking`
+                  : t('explore_top_cities')}
               </p>
             </div>
-
-            <button
-              onClick={() => navigate(selectedCategory === 'VILLAS' ? '/search?property_type=VILLA,HOMESTAY' : '/search?property_type=HOTEL,RESORT')}
-              className="text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 bg-rose-50 px-3.5 py-1.5 rounded-xl border border-rose-200 transition-all hover:bg-rose-100"
-            >
-              {t('view_all_hotels')} <ArrowRight className="w-3.5 h-3.5" />
-            </button>
           </div>
 
-          {/* Interactive City Filter Pills Header */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
-            {cityCategories.map((cityName) => (
-              <button
-                key={cityName}
-                onClick={() => setSelectedCityFilter(cityName)}
-                className={`px-4 py-2 rounded-full text-xs font-black transition-all cursor-pointer whitespace-nowrap ${selectedCityFilter === cityName
-                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/25'
-                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
-                  }`}
-              >
-                {cityName === 'ALL' ? t('all') : cityName}
-              </button>
-            ))}
-          </div>
+          {/* Interactive City Filter Pills Header (List View Only) */}
+          {viewMode === 'list' && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
+              {cityCategories.map((cityName) => (
+                <button
+                  key={cityName}
+                  onClick={() => setSelectedCityFilter(cityName)}
+                  className={`px-4 py-2 rounded-full text-xs font-black transition-all cursor-pointer whitespace-nowrap ${selectedCityFilter === cityName
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/25'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+                    }`}
+                >
+                  {cityName === 'ALL' ? t('all') : cityName}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* LOADING STATE */}
@@ -775,50 +1123,105 @@ const Home = () => {
               <RefreshCw className="w-3.5 h-3.5" /> Retry Connection
             </button>
           </div>
-        ) : categoryFilteredHotels.length === 0 ? (
+        ) : displayedHotels.length === 0 ? (
           <div className="card-white p-12 text-center space-y-3 max-w-md mx-auto">
             <Hotel className="w-12 h-12 text-slate-300 mx-auto" />
             <h3 className="text-base font-black text-slate-900">
-              No {selectedCategory === 'VILLAS' ? 'Villas or Homestays' : 'Hotels'} Available
+              {searchCriteria.isSearched && searchCriteria.destination
+                ? `No Properties Found in "${searchCriteria.destination}"`
+                : activeFiltersCount > 0
+                ? 'No Properties Match Filter'
+                : `No ${selectedCategory === 'VILLAS' ? 'Villas or Homestays' : 'Hotels'} Available`}
             </h3>
             <p className="text-xs text-slate-500 font-medium leading-relaxed">
-              No verified properties in this category are currently listed in the database.
+              {searchCriteria.isSearched
+                ? 'Try searching for a different destination or resetting your search to see all available properties.'
+                : activeFiltersCount > 0
+                ? 'Try adjusting your price range, star rating, or amenities filters to see more results.'
+                : 'No verified properties in this category are currently listed in the database.'}
             </p>
             <div className="pt-2">
-              <button
-                onClick={() => navigate('/search')}
-                className="btn-rose py-2 px-5 text-xs font-bold"
-              >
-                Search All Stays
-              </button>
+              {searchCriteria.isSearched ? (
+                <button
+                  onClick={handleClearSearch}
+                  className="btn-rose py-2 px-5 text-xs font-bold cursor-pointer"
+                >
+                  Clear Search & Show All Stays
+                </button>
+              ) : activeFiltersCount > 0 ? (
+                <button
+                  onClick={handleResetFilters}
+                  className="btn-rose py-2 px-5 text-xs font-bold cursor-pointer"
+                >
+                  Reset All Filters
+                </button>
+              ) : (
+                <button
+                  onClick={fetchFeaturedHotels}
+                  className="btn-rose py-2 px-5 text-xs font-bold cursor-pointer"
+                >
+                  Refresh Stays
+                </button>
+              )}
             </div>
+          </div>
+        ) : viewMode === 'map' ? (
+          <div className="w-full">
+            <HotelMapView
+              hotels={displayedHotels}
+              userWishlist={userWishlist}
+              onToggleWishlist={handleToggleWishlist}
+              activeCity={selectedCityFilter !== 'ALL' ? selectedCityFilter : ''}
+            />
           </div>
         ) : (
           <div className="space-y-12">
 
-            {/* If Selected City Filter is NOT 'ALL', show filtered hotels for that city */}
-            {selectedCityFilter !== 'ALL' ? (
+            {/* If Selected City Filter is NOT 'ALL' or user searched via Find Rooms, show filtered hotels grid */}
+            {selectedCityFilter !== 'ALL' || searchCriteria.isSearched ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                   <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
                     <MapPin className="w-5 h-5 text-rose-600" />
-                    <span>Hotels in {selectedCityFilter}</span>
+                    <span>
+                      {searchCriteria.isSearched && searchCriteria.destination
+                        ? `Available Hotels in "${searchCriteria.destination}"`
+                        : selectedCityFilter !== 'ALL'
+                        ? `Hotels in ${selectedCityFilter}`
+                        : 'All Matching Available Hotels'}
+                    </span>
+                    <span className="text-xs font-black text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-full">
+                      {displayedHotels.length} {displayedHotels.length === 1 ? 'Hotel' : 'Hotels'}
+                    </span>
                   </h3>
-                  <button
-                    onClick={() => navigate(`/search?city=${encodeURIComponent(selectedCityFilter)}`)}
-                    className="text-xs font-bold text-rose-600 hover:underline flex items-center gap-1"
-                  >
-                    View All in {selectedCityFilter}
-                  </button>
+                  {searchCriteria.isSearched ? (
+                    <button
+                      onClick={handleClearSearch}
+                      className="text-xs font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      Clear Search & View All
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => navigate(`/search?city=${encodeURIComponent(selectedCityFilter)}`)}
+                      className="text-xs font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      View All in {selectedCityFilter}
+                    </button>
+                  )}
                 </div>
 
-                {/* City Specific Hotel Grid */}
-                {groupedHotelsByCity[selectedCityFilter] && groupedHotelsByCity[selectedCityFilter].length > 0 ? (
+                {/* City / Search Specific Hotel Grid */}
+                {displayedHotels.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                    {groupedHotelsByCity[selectedCityFilter].map((hotel) => (
+                    {displayedHotels.map((hotel) => (
                       <div
                         key={hotel.id}
-                        onClick={() => navigate(`/hotels/${hotel.id}`)}
+                        onClick={() => {
+                          const cIn = searchCriteria.checkIn || '';
+                          const cOut = searchCriteria.checkOut || '';
+                          navigate(`/hotels/${hotel.id}?check_in=${cIn}&check_out=${cOut}&rooms=${searchCriteria.rooms}&guests=${searchCriteria.guests}`);
+                        }}
                         className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-slate-300 hover:shadow-sm transition-all duration-200 cursor-pointer flex flex-col group"
                       >
                         {/* Compact Hotel Image & Badges */}
@@ -843,6 +1246,19 @@ const Home = () => {
                             <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
                             <span>{hotel.city}</span>
                           </div>
+
+                          {/* Wishlist Heart Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleToggleWishlist(e, hotel)}
+                            className={`absolute top-2.5 left-2.5 p-2 rounded-full backdrop-blur-md shadow-md transition-all duration-300 z-10 cursor-pointer ${userWishlist?.includes(hotel.id)
+                              ? 'bg-rose-600 text-white hover:bg-rose-700 scale-105'
+                              : 'bg-slate-900/60 text-white hover:bg-rose-600 hover:text-white'
+                              }`}
+                            title={userWishlist?.includes(hotel.id) ? 'Remove from Wishlist' : 'Save to Wishlist'}
+                          >
+                            <Heart className={`w-3.5 h-3.5 ${userWishlist?.includes(hotel.id) ? 'fill-current' : ''}`} />
+                          </button>
                         </div>
 
                         {/* Details */}
@@ -861,8 +1277,17 @@ const Home = () => {
                               <span className="text-base font-black text-rose-600">₹{(hotel.starting_price || 2500).toLocaleString()}</span>
                               <span className="text-[10px] text-slate-500"> / night</span>
                             </div>
-                            <button className="btn-rose py-1.5 px-3.5 text-[11px] font-extrabold rounded-xl">
-                              View Stay
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const cIn = searchCriteria.checkIn || '';
+                                const cOut = searchCriteria.checkOut || '';
+                                navigate(`/hotels/${hotel.id}?check_in=${cIn}&check_out=${cOut}&rooms=${searchCriteria.rooms || 1}&guests=${searchCriteria.guests || 2}`);
+                              }}
+                              className="btn-rose py-1.5 px-3.5 text-[11px] font-extrabold rounded-xl shadow-xs cursor-pointer"
+                            >
+                              Book Room
                             </button>
                           </div>
                         </div>
@@ -872,10 +1297,20 @@ const Home = () => {
                 ) : (
                   <div className="card-white p-8 text-center space-y-3">
                     <Hotel className="w-10 h-10 text-rose-600 mx-auto opacity-40" />
-                    <p className="text-xs font-bold text-slate-500">No hotels currently listed in {selectedCityFilter}.</p>
-                    <button onClick={() => navigate(`/search?city=${encodeURIComponent(selectedCityFilter)}`)} className="btn-rose py-2 px-4 text-xs font-bold inline-block">
-                      Browse Search Index for {selectedCityFilter}
-                    </button>
+                    <p className="text-xs font-bold text-slate-500">
+                      {searchCriteria.isSearched && searchCriteria.destination
+                        ? `No stays found matching "${searchCriteria.destination}".`
+                        : `No hotels currently listed in ${selectedCityFilter}.`}
+                    </p>
+                    {searchCriteria.isSearched ? (
+                      <button onClick={handleClearSearch} className="btn-rose py-2 px-4 text-xs font-bold inline-block cursor-pointer">
+                        Clear Search & Show All Stays
+                      </button>
+                    ) : (
+                      <button onClick={() => navigate(`/search?city=${encodeURIComponent(selectedCityFilter)}`)} className="btn-rose py-2 px-4 text-xs font-bold inline-block">
+                        Browse Search Index for {selectedCityFilter}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -904,8 +1339,8 @@ const Home = () => {
                       </div>
 
                       <button
-                        onClick={() => navigate(`/search?city=${encodeURIComponent(cityName)}`)}
-                        className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline flex items-center gap-1"
+                        onClick={() => setSelectedCityFilter(cityName)}
+                        className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline flex items-center gap-1 cursor-pointer"
                       >
                         See All in {cityName}
                       </button>
@@ -916,7 +1351,11 @@ const Home = () => {
                       {cityHotels.map((hotel) => (
                         <div
                           key={hotel.id}
-                          onClick={() => navigate(`/hotels/${hotel.id}`)}
+                          onClick={() => {
+                            const cIn = searchCriteria.checkIn || '';
+                            const cOut = searchCriteria.checkOut || '';
+                            navigate(`/hotels/${hotel.id}?check_in=${cIn}&check_out=${cOut}&rooms=${searchCriteria.rooms}&guests=${searchCriteria.guests}`);
+                          }}
                           className="min-w-[270px] max-w-[270px] bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-slate-300 hover:shadow-sm transition-all duration-200 cursor-pointer flex flex-col group shrink-0"
                         >
                           {/* Compact Hotel Image & Badges */}
@@ -973,8 +1412,17 @@ const Home = () => {
                                 <span className="text-base font-black text-rose-600">₹{(hotel.starting_price || 2500).toLocaleString()}</span>
                                 <span className="text-[10px] text-slate-500"> / {t('night')}</span>
                               </div>
-                              <button className="btn-rose py-1.5 px-3.5 text-[11px] font-extrabold rounded-xl shadow-xs">
-                                {t('view_stay')}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const cIn = searchCriteria.checkIn || '';
+                                  const cOut = searchCriteria.checkOut || '';
+                                  navigate(`/hotels/${hotel.id}?check_in=${cIn}&check_out=${cOut}&rooms=${searchCriteria.rooms || 1}&guests=${searchCriteria.guests || 2}`);
+                                }}
+                                className="btn-rose py-1.5 px-3.5 text-[11px] font-extrabold rounded-xl shadow-xs cursor-pointer"
+                              >
+                                Book Room
                               </button>
                             </div>
                           </div>
@@ -988,6 +1436,506 @@ const Home = () => {
 
           </div>
         )}
+
+        {/* FILTER SLIDE-OVER MODAL DRAWER */}
+        {showFilterModal && (
+          <div className="fixed inset-0 z-[999] bg-slate-950/60 backdrop-blur-xs flex justify-end animate-fade-in">
+            <div className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col justify-between border-l border-slate-200 animate-slide-left">
+
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="w-5 h-5 text-rose-600" />
+                  <h3 className="text-base font-black text-slate-900">{t('filters')}</h3>
+                  {activeFiltersCount > 0 && (
+                    <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center">
+                      {activeFiltersCount}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFilterModal(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Scrollable Body */}
+              <div className="p-6 overflow-y-auto flex-grow space-y-6">
+
+                {/* 1. Price Range Filter */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-black">
+                    <span className="text-slate-800 uppercase tracking-wider text-xs">{t('price_range')}</span>
+                    <span className="text-rose-600 font-extrabold text-sm">₹{priceMax.toLocaleString()}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1000"
+                    max="15000"
+                    step="500"
+                    value={priceMax}
+                    onChange={(e) => setPriceMax(parseInt(e.target.value))}
+                    className="w-full accent-rose-600 cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-400 font-bold">
+                    <span>₹1,000</span>
+                    <span>₹15,000+</span>
+                  </div>
+                </div>
+
+                {/* 2. Star Rating Filter */}
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider block">
+                    {t('star_rating')}
+                  </label>
+                  <div className="flex gap-2">
+                    {[5, 4, 3, 2, 1].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => handleStarToggle(star)}
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1 ${selectedStars.includes(star)
+                          ? 'bg-rose-50 border-rose-600 text-rose-600'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                      >
+                        <span>{star}</span>
+                        <Star className={`w-3.5 h-3.5 ${selectedStars.includes(star) ? 'fill-rose-600' : 'text-slate-400'}`} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Popular Preferences */}
+                <div className="space-y-3">
+                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider block">
+                    {t('popular_filters')}
+                  </label>
+                  <div className="space-y-2.5">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer hover:text-slate-900">
+                      <input
+                        type="checkbox"
+                        checked={freeCancellation}
+                        onChange={(e) => setFreeCancellation(e.target.checked)}
+                        className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 accent-rose-600 cursor-pointer"
+                      />
+                      <span>Free Cancellation Available</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer hover:text-slate-900">
+                      <input
+                        type="checkbox"
+                        checked={breakfastIncluded}
+                        onChange={(e) => setBreakfastIncluded(e.target.checked)}
+                        className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 accent-rose-600 cursor-pointer"
+                      />
+                      <span>Breakfast Included</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 4. Amenities Filter */}
+                <div className="space-y-3">
+                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider block">
+                    {t('amenities')}
+                  </label>
+                  <div className="space-y-2.5">
+                    {availableAmenities.map((amenity) => (
+                      <label key={amenity} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer hover:text-slate-900">
+                        <input
+                          type="checkbox"
+                          checked={selectedAmenities.includes(amenity)}
+                          onChange={() => handleAmenityToggle(amenity)}
+                          className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 accent-rose-600 cursor-pointer"
+                        />
+                        <span>{amenity}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-5 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  {t('clear_filters')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFilterModal(false)}
+                  className="btn-rose px-6 py-2.5 rounded-xl text-xs font-black flex-1 shadow-md shadow-rose-600/20"
+                >
+                  {t('apply_filters')} {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ROOM QUICK VIEW MODAL (IN-PLACE PREVIEW ON HOME PAGE) */}
+        {selectedRoomDetail && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 flex flex-col max-h-[88vh] animate-in zoom-in-95 duration-200">
+              
+              {/* Modal Image Header */}
+              <div className="relative h-56 bg-slate-100">
+                <img
+                  src={selectedRoomDetail.primary_image || (selectedRoomDetail.images && selectedRoomDetail.images[0]?.display_url) || 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=800&q=80'}
+                  alt={selectedRoomDetail.title}
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSelectedRoomDetail(null)}
+                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur-xs px-3 py-1 rounded-lg text-xs font-bold text-white flex items-center gap-1.5 border border-white/20">
+                  <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                  <span>{selectedRoomDetail.hotel_name} • {selectedRoomDetail.hotel_city}</span>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black uppercase text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded-full border border-sky-200">
+                      {selectedRoomDetail.room_type || 'Standard'}
+                    </span>
+                    <span className="text-base font-black text-rose-600">
+                      ₹{Number(selectedRoomDetail.price_per_night || 2500).toLocaleString()} <span className="text-xs text-slate-400 font-medium">/ night</span>
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900 mt-2">{selectedRoomDetail.title}</h3>
+                  {selectedRoomDetail.description && (
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">{selectedRoomDetail.description}</p>
+                  )}
+                </div>
+
+                {/* Features & Specs */}
+                <div className="grid grid-cols-2 gap-3 py-3 border-y border-slate-100 text-xs text-slate-700 font-medium">
+                  <div className="flex items-center gap-2">
+                    <span>🛏️ Bed:</span>
+                    <span className="font-bold text-slate-900">{selectedRoomDetail.bed_type || 'Double Bed'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span>👥 Capacity:</span>
+                    <span className="font-bold text-slate-900">{selectedRoomDetail.capacity_adults || 2} Adults{selectedRoomDetail.capacity_children ? `, ${selectedRoomDetail.capacity_children} Children` : ''}</span>
+                  </div>
+                  {selectedRoomDetail.room_size_sqft && (
+                    <div className="flex items-center gap-2">
+                      <span>📐 Size:</span>
+                      <span className="font-bold text-slate-900">{selectedRoomDetail.room_size_sqft} sq.ft</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span>🏨 Hotel:</span>
+                    <span className="font-bold text-slate-900 truncate">{selectedRoomDetail.hotel_name}</span>
+                  </div>
+                </div>
+
+                {/* Amenities */}
+                {selectedRoomDetail.amenities && selectedRoomDetail.amenities.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-black text-slate-900 uppercase tracking-wider">Amenities</h5>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedRoomDetail.amenities.map(a => (
+                        <span key={a.id || a.name} className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>{a.name}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRoomDetail(null)}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cIn = searchCriteria.checkIn || getTodayStr();
+                    const cOut = searchCriteria.checkOut || getTomorrowStr(cIn, 1);
+                    navigate(`/booking/${selectedRoomDetail.id}?check_in=${cIn}&check_out=${cOut}&rooms=${searchCriteria.rooms || 1}&guests=${searchCriteria.guests || 2}`);
+                  }}
+                  className="btn-rose py-2 px-5 text-xs font-black rounded-xl cursor-pointer shadow-md"
+                >
+                  Proceed to Book
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ROOM PREVIEW MODAL - SHOWN DIRECTLY ON HOME PAGE WITHOUT REDIRECT */}
+        {selectedHotelForRooms && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
+
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between gap-4 bg-slate-50/70">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-sky-100 text-[#0284C7] flex items-center justify-center shrink-0">
+                    <BedDouble className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-slate-900 text-base line-clamp-1">{selectedHotelForRooms.name}</h3>
+                    <p className="text-xs text-slate-500 flex items-center gap-1 font-medium mt-0.5">
+                      <MapPin className="w-3 h-3 text-rose-500" />
+                      <span>{selectedHotelForRooms.city || selectedHotelForRooms.address}</span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedHotelForRooms(null)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Selected Dates & Guest Info Banner */}
+              <div className="bg-sky-50 px-5 py-2.5 border-b border-sky-100 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-sky-900">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Stay: {searchCriteria.checkIn || getTodayStr()} → {searchCriteria.checkOut || getTomorrowStr(searchCriteria.checkIn || getTodayStr(), 1)}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-sky-600" />
+                  <span>{searchCriteria.guests || 2} Guests • {searchCriteria.rooms || 1} Room</span>
+                </span>
+              </div>
+
+              {/* Rooms List Body */}
+              <div className="p-5 overflow-y-auto space-y-3.5 flex-1 max-h-[58vh]">
+                {modalRoomsLoading ? (
+                  <div className="py-14 text-center space-y-3">
+                    <div className="w-9 h-9 border-3 border-sky-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                    <p className="text-xs font-bold text-slate-500">Checking room availability...</p>
+                  </div>
+                ) : modalRooms.length === 0 ? (
+                  <div className="py-12 text-center space-y-3">
+                    <BedDouble className="w-12 h-12 text-slate-300 mx-auto" />
+                    <h4 className="text-sm font-black text-slate-800">No specific rooms found for this property</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      You can view full details or explore other verified stays in this destination.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cIn = searchCriteria.checkIn || '';
+                        const cOut = searchCriteria.checkOut || '';
+                        navigate(`/hotels/${selectedHotelForRooms.id}?check_in=${cIn}&check_out=${cOut}&rooms=${searchCriteria.rooms}&guests=${searchCriteria.guests}`);
+                      }}
+                      className="btn-rose text-xs py-2 px-5 font-bold cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <span>View Full Property Page</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {modalRooms.map((room) => {
+                      const roomImg = (room.images && room.images[0]?.display_url) || room.primary_image || selectedHotelForRooms.primary_image || 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=600&q=80';
+                      return (
+                        <div
+                          key={room.id}
+                          className="border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-sky-300 hover:shadow-xs transition-all bg-white"
+                        >
+                          <div className="flex items-center gap-3.5">
+                            <img
+                              src={roomImg}
+                              alt={room.title}
+                              className="w-20 h-20 rounded-xl object-cover shrink-0 bg-slate-100 border border-slate-100"
+                            />
+                            <div className="space-y-1">
+                              <h4 className="text-sm font-black text-slate-900">{room.title}</h4>
+                              <p className="text-xs text-slate-500 font-medium">
+                                {room.room_type || 'Standard'} • {room.bed_type || 'Double Bed'}
+                              </p>
+                              <p className="text-[11px] text-slate-400">
+                                Max Capacity: {room.capacity_adults || 2} Adults{room.capacity_children ? `, ${room.capacity_children} Children` : ''}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                            <div>
+                              <span className="text-base font-black text-rose-600">₹{Number(room.price_per_night || 2500).toLocaleString()}</span>
+                              <span className="text-[10px] text-slate-400"> / night</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const checkInVal = searchCriteria.checkIn || getTodayStr();
+                                const checkOutVal = searchCriteria.checkOut || getTomorrowStr(checkInVal, 1);
+                                navigate(`/booking/${room.id}?check_in=${checkInVal}&check_out=${checkOutVal}&rooms=${searchCriteria.rooms || 1}&guests=${searchCriteria.guests || 2}`);
+                              }}
+                              className="btn-rose text-xs py-1.5 px-4 font-black rounded-xl cursor-pointer"
+                            >
+                              Book Room
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setSelectedHotelForRooms(null)}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const checkInVal = searchCriteria.checkIn || '';
+                    const checkOutVal = searchCriteria.checkOut || '';
+                    navigate(`/hotels/${selectedHotelForRooms.id}?check_in=${checkInVal}&check_out=${checkOutVal}&rooms=${searchCriteria.rooms || 1}&guests=${searchCriteria.guests || 2}`);
+                  }}
+                  className="text-xs font-black text-[#0284C7] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <span>View Full Property Details</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ROOM QUICK VIEW MODAL (IN-PLACE PREVIEW ON HOME PAGE) */}
+        {selectedRoomDetail && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 flex flex-col max-h-[88vh] animate-in zoom-in-95 duration-200">
+              
+              {/* Modal Image Header */}
+              <div className="relative h-56 bg-slate-100">
+                <img
+                  src={selectedRoomDetail.primary_image || (selectedRoomDetail.images && selectedRoomDetail.images[0]?.display_url) || 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=800&q=80'}
+                  alt={selectedRoomDetail.title}
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSelectedRoomDetail(null)}
+                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur-xs px-3 py-1 rounded-lg text-xs font-bold text-white flex items-center gap-1.5 border border-white/20">
+                  <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                  <span>{selectedRoomDetail.hotel_name} • {selectedRoomDetail.hotel_city}</span>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black uppercase text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded-full border border-sky-200">
+                      {selectedRoomDetail.room_type || 'Standard'}
+                    </span>
+                    <span className="text-base font-black text-rose-600">
+                      ₹{Number(selectedRoomDetail.price_per_night || 2500).toLocaleString()} <span className="text-xs text-slate-400 font-medium">/ night</span>
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900 mt-2">{selectedRoomDetail.title}</h3>
+                  {selectedRoomDetail.description && (
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">{selectedRoomDetail.description}</p>
+                  )}
+                </div>
+
+                {/* Features & Specs */}
+                <div className="grid grid-cols-2 gap-3 py-3 border-y border-slate-100 text-xs text-slate-700 font-medium">
+                  <div className="flex items-center gap-2">
+                    <span>🛏️ Bed:</span>
+                    <span className="font-bold text-slate-900">{selectedRoomDetail.bed_type || 'Double Bed'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span>👥 Capacity:</span>
+                    <span className="font-bold text-slate-900">{selectedRoomDetail.capacity_adults || 2} Adults{selectedRoomDetail.capacity_children ? `, ${selectedRoomDetail.capacity_children} Children` : ''}</span>
+                  </div>
+                  {selectedRoomDetail.room_size_sqft && (
+                    <div className="flex items-center gap-2">
+                      <span>📐 Size:</span>
+                      <span className="font-bold text-slate-900">{selectedRoomDetail.room_size_sqft} sq.ft</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span>🏨 Hotel:</span>
+                    <span className="font-bold text-slate-900 truncate">{selectedRoomDetail.hotel_name}</span>
+                  </div>
+                </div>
+
+                {/* Amenities */}
+                {selectedRoomDetail.amenities && selectedRoomDetail.amenities.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-black text-slate-900 uppercase tracking-wider">Amenities</h5>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedRoomDetail.amenities.map(a => (
+                        <span key={a.id || a.name} className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>{a.name}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRoomDetail(null)}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cIn = searchCriteria.checkIn || getTodayStr();
+                    const cOut = searchCriteria.checkOut || getTomorrowStr(cIn, 1);
+                    navigate(`/booking/${selectedRoomDetail.id}?check_in=${cIn}&check_out=${cOut}&rooms=${searchCriteria.rooms || 1}&guests=${searchCriteria.guests || 2}`);
+                  }}
+                  className="btn-rose py-2 px-5 text-xs font-black rounded-xl cursor-pointer shadow-md"
+                >
+                  Proceed to Book
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
       </section>
 
     </div>
@@ -995,5 +1943,3 @@ const Home = () => {
 };
 
 export default Home;
-
-

@@ -15,7 +15,13 @@ export const bookingService = {
 
   getMyBookings: async (config = {}) => {
     // Backend filter automatically returns bookings belonging to authenticated user
-    const response = await apiClient.get(ENDPOINTS.BOOKINGS.MY_BOOKINGS, config);
+    const response = await apiClient.get('/bookings/', {
+      ...config,
+      params: {
+        page_size: 1000,
+        ...(config.params || {})
+      }
+    });
     return response.data;
   },
 

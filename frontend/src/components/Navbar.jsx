@@ -260,6 +260,14 @@ const Navbar = () => {
     navigate('/login');
   };
 
+  const handleLogoClick = () => {
+    setSearchDestination('');
+    window.dispatchEvent(new CustomEvent('clearSearchFilter'));
+    if (location.pathname === '/') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const roleBadges = {
     CUSTOMER: <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">Customer</span>,
     HOTEL_OWNER: <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-50 text-sky-700 border border-sky-200">Hotel Owner</span>,
@@ -280,7 +288,7 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-20">
           
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-1.5 group shrink-0">
+          <Link to="/" onClick={handleLogoClick} className="flex items-center gap-1.5 group shrink-0">
             <div className="h-12 sm:h-14 w-12 sm:w-14 rounded-xl overflow-hidden shrink-0 flex items-center justify-center">
               <video
                 autoPlay

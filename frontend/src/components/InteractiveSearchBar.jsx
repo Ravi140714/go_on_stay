@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search, MapPin, Calendar, Users, Minus, Plus, Building2,
-  Sparkles, Compass, Check, Palmtree, Landmark, Waves, ChevronDown
+  Sparkles, Compass, Check, Palmtree, Landmark, Waves, ChevronDown, X
 } from 'lucide-react';
 import api from '../services/api';
 import { hotelService } from '../services';
@@ -62,7 +62,8 @@ const InteractiveSearchBar = ({
   initialAdults = 2,
   initialChildren = 0,
   selectedCategory = 'HOTELS',
-  onTabChange
+  onTabChange,
+  onSearch
 }) => {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -117,6 +118,21 @@ const InteractiveSearchBar = ({
   useEffect(() => {
     fetchActiveCities();
   }, []);
+
+  // Listen for global clearSearchFilter event (e.g. clicking GoOnStay Logo)
+  useEffect(() => {
+    const handleClear = () => {
+      setDestination('');
+      setCheckIn(todayStr);
+      setCheckOut(getTomorrowStr(todayStr, 1));
+      setRooms(1);
+      setAdults(2);
+      setChildren(0);
+      setActiveTab(null);
+    };
+    window.addEventListener('clearSearchFilter', handleClear);
+    return () => window.removeEventListener('clearSearchFilter', handleClear);
+  }, [todayStr]);
 
   const fetchActiveCities = async () => {
     try {
@@ -194,19 +210,31 @@ const InteractiveSearchBar = ({
     const validCheckIn = checkIn && checkIn >= today ? checkIn : today;
     const validCheckOut = checkOut && checkOut > validCheckIn ? checkOut : getTomorrowStr(validCheckIn, 1);
 
-    const params = new URLSearchParams({
-      city: destination,
-      check_in: validCheckIn,
-      check_out: validCheckOut,
-      rooms: rooms.toString(),
-      guests: (adults + children).toString()
-    });
-    if (selectedCategory === 'VILLAS') {
-      params.append('property_type', 'VILLA,HOMESTAY');
+    const searchData = {
+      destination: (destination || '').trim(),
+      checkIn: validCheckIn,
+      checkOut: validCheckOut,
+      rooms: Number(rooms) || 1,
+      adults: Number(adults) || 2,
+      children: Number(children) || 0,
+      guests: (Number(adults) || 2) + (Number(children) || 0),
+      category: selectedCategory,
+      propertyType: selectedCategory === 'VILLAS' ? 'VILLA,HOMESTAY' : 'HOTEL,RESORT'
+    };
+
+    if (typeof onSearch === 'function') {
+      onSearch(searchData);
     } else {
-      params.append('property_type', 'HOTEL,RESORT');
+      const params = new URLSearchParams({
+        city: searchData.destination,
+        check_in: searchData.checkIn,
+        check_out: searchData.checkOut,
+        rooms: searchData.rooms.toString(),
+        guests: searchData.guests.toString()
+      });
+      params.append('property_type', searchData.propertyType);
+      navigate(`/search?${params.toString()}`);
     }
-    navigate(`/search?${params.toString()}`);
   };
 
   const handleQuickPresetDays = (days) => {
@@ -293,19 +321,33 @@ const InteractiveSearchBar = ({
           }}
           onSearch={(spokenCity) => {
             setDestination(spokenCity);
-            const params = new URLSearchParams({
-              city: spokenCity || '',
-              check_in: checkIn,
-              check_out: checkOut,
-              rooms: rooms.toString(),
-              guests: (adults + children).toString(),
-            });
-            if (selectedCategory === 'VILLAS') {
-              params.append('property_type', 'VILLA,HOMESTAY');
+            const today = getTodayStr();
+            const validCheckIn = checkIn && checkIn >= today ? checkIn : today;
+            const validCheckOut = checkOut && checkOut > validCheckIn ? checkOut : getTomorrowStr(validCheckIn, 1);
+            const searchData = {
+              destination: (spokenCity || '').trim(),
+              checkIn: validCheckIn,
+              checkOut: validCheckOut,
+              rooms: Number(rooms) || 1,
+              adults: Number(adults) || 2,
+              children: Number(children) || 0,
+              guests: (Number(adults) || 2) + (Number(children) || 0),
+              category: selectedCategory,
+              propertyType: selectedCategory === 'VILLAS' ? 'VILLA,HOMESTAY' : 'HOTEL,RESORT'
+            };
+            if (typeof onSearch === 'function') {
+              onSearch(searchData);
             } else {
-              params.append('property_type', 'HOTEL,RESORT');
+              const params = new URLSearchParams({
+                city: searchData.destination,
+                check_in: searchData.checkIn,
+                check_out: searchData.checkOut,
+                rooms: searchData.rooms.toString(),
+                guests: searchData.guests.toString(),
+              });
+              params.append('property_type', searchData.propertyType);
+              navigate(`/search?${params.toString()}`);
             }
-            navigate(`/search?${params.toString()}`);
           }}
           className="ml-0.5 shrink-0"
         />
@@ -326,18 +368,28 @@ const InteractiveSearchBar = ({
       {/* FLOATING POPOVER: WHERE (DESTINATIONS) */}
       {activeTab === 'where' && (
         <div className="absolute top-full left-0 right-0 sm:right-auto mt-3 w-full sm:w-96 bg-white/95 backdrop-blur-2xl rounded-3xl p-4 sm:p-5 shadow-[0_20px_50px_rgba(8,_112,_184,_0.15)] border border-white/80 z-50 animate-in fade-in zoom-in-95 duration-200">
-          <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+          <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
             <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
               Popular Destinations
             </h4>
-            <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-rose-600 bg-rose-50 px-2 py-1 rounded-xl">
-              <span>Voice</span>
-              <VoiceSearchButton
-                onTranscript={(city) => {
-                  setDestination(city);
-                  handleTabSwitch('when');
-                }}
-              />
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-rose-600 bg-rose-50 px-2 py-1 rounded-xl">
+                <span>Voice</span>
+                <VoiceSearchButton
+                  onTranscript={(city) => {
+                    setDestination(city);
+                    handleTabSwitch(null);
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => handleTabSwitch(null)}
+                className="p-1.5 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
           <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
@@ -350,7 +402,7 @@ const InteractiveSearchBar = ({
                     key={dest.name}
                     onClick={() => {
                       setDestination(dest.name);
-                      handleTabSwitch('when');
+                      handleTabSwitch(null);
                     }}
                     className={`flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${isSelected ? 'bg-rose-50 border border-rose-200' : 'hover:bg-slate-50 border border-transparent'
                       }`}
@@ -470,13 +522,22 @@ const InteractiveSearchBar = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => handleTabSwitch('who')}
-            className="w-full py-2.5 text-xs font-extrabold uppercase tracking-wider bg-[#0284C7] hover:bg-[#0369A1] text-white rounded-full transition-colors shadow-[0_4px_12px_rgba(2,132,199,0.25)] cursor-pointer"
-          >
-            Continue to Guests & Rooms
-          </button>
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => handleTabSwitch(null)}
+              className="flex-1 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer text-center"
+            >
+              Done
+            </button>
+            <button
+              type="button"
+              onClick={handleSearchSubmit}
+              className="flex-1 py-2.5 text-xs font-black uppercase tracking-wider bg-[#0284C7] hover:bg-[#0369A1] text-white rounded-full transition-colors shadow-[0_4px_12px_rgba(2,132,199,0.25)] cursor-pointer text-center"
+            >
+              Find Rooms
+            </button>
+          </div>
         </div>
       )}
 
@@ -656,13 +717,22 @@ const InteractiveSearchBar = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSearchSubmit}
-            className="w-full py-3 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(2,132,199,0.25)] bg-[#0284C7] text-white rounded-full hover:bg-[#0369A1] transition-colors cursor-pointer"
-          >
-            <Search className="w-4 h-4 stroke-[3]" /> Search Available Stays
-          </button>
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => handleTabSwitch(null)}
+              className="flex-1 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer text-center"
+            >
+              Done
+            </button>
+            <button
+              type="button"
+              onClick={handleSearchSubmit}
+              className="flex-1 py-2.5 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-[0_4px_12px_rgba(2,132,199,0.25)] bg-[#0284C7] text-white rounded-full hover:bg-[#0369A1] transition-colors cursor-pointer text-center"
+            >
+              <Search className="w-3.5 h-3.5 stroke-[3]" /> Find Rooms
+            </button>
+          </div>
         </div>
       )}
 
